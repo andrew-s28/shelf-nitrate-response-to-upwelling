@@ -1,0 +1,53 @@
+axes.prop_cycle : cycler('color', ['004488', 'DDAA33', 'BB5566'])
+
+# Set default figure size
+figure.figsize : 3.8, 4.6
+
+# Set x axis
+xtick.direction : in
+xtick.major.size : 5
+xtick.major.width : 1
+xtick.minor.size : 3
+xtick.minor.width : 1
+xtick.minor.visible : True
+xtick.top : True
+
+# Set y axis
+ytick.direction : in
+ytick.major.size : 5
+ytick.major.width : 1
+ytick.minor.size : 3
+ytick.minor.width : 1
+ytick.minor.visible : True
+ytick.right : True
+
+# Set line/marker sizes
+axes.linewidth : 1
+grid.linewidth : 1
+lines.linewidth : 2
+lines.markersize: 5
+
+figure.autolayout: False
+savefig.bbox : standard
+figure.constrained_layout.use : True
+
+# Use serif fonts
+font.serif : times
+font.sans-serif: helvet
+font.family : sans-serif
+axes.formatter.use_mathtext : True
+mathtext.fontset : dejavusans
+font.size: 10
+axes.titlesize: 12
+axes.titleweight: bold
+legend.fontsize: 8
+figure.labelsize: 10
+axes.labelsize: 10
+xtick.labelsize: 8
+ytick.labelsize: 8
+axes.labelpad: 10
+
+
+# Use LaTeX for math formatting
+text.usetex : True
+text.latex.preamble : \usepackage{helvet} \usepackage{sansmath} \sansmath \usepackage{amsmath} \usepackage{amssymb} \usepackage{wasysym}
