@@ -69,6 +69,7 @@ if TYPE_CHECKING:
 
 # %%
 savefigs = False
+show_bottle_comparisons = False
 notebook_dir = Path().resolve()
 
 # matplotlib style
@@ -167,13 +168,6 @@ plt.scatter(
     nitrate.where(nitrate.deployment == 17).nitrate,
 )
 
-# %%
-fig, ax = plt.subplots(len(deployments), sharey=True, figsize=(10, 30))
-for i, d in enumerate(deployments):
-    temp = nitrate.where(nitrate.deployment == d, drop=True)
-    ax[i].plot(temp.time, temp.nitrate, ".")
-    ax[i].set_ylim(-5, 50)
-
 # %% [markdown]
 # ## Midshelf Nitrate Analysis
 
@@ -187,113 +181,14 @@ midshelf_nitrate = xr.open_dataset(
         "../data/CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2023-09-23.nc",
     )
 )
+
+# deployment 18 has some odd very negative data that isn't removed in QC, and a shift halfway through deployment
+midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 18, drop=True)
+
 midshelf_nitrate = midshelf_nitrate.rename(
     {"salinity_corrected_nitrate": "nitrate", "sigma_theta": "density"}
 )
 
-
-# %%
-plt.figure(figsize=(10, 4))
-temp = midshelf_nitrate.copy()
-for i, d in enumerate(temp.depth):
-    plt.plot(temp.time, temp.nitrate.isel(depth=i))
-plt.figure(figsize=(10, 4))
-
-# %%
-fig, ax = plt.subplots(
-    len(
-        np.unique(midshelf_nitrate.deployment.values)[
-            ~np.isnan(np.unique(midshelf_nitrate.deployment.values))
-        ]
-    ),
-    sharey=True,
-    figsize=(10, 30),
-)
-for i, d in enumerate(
-    np.unique(midshelf_nitrate.deployment.values)[
-        ~np.isnan(np.unique(midshelf_nitrate.deployment.values))
-    ]
-):
-    temp = midshelf_nitrate.where(midshelf_nitrate.deployment == d, drop=True)
-    ax[i].plot(temp.time, temp.nitrate, ".")
-    ax[i].set_ylim(-5, 50)
-
-# %%
-baseline = []
-for i in np.unique(midshelf_nitrate.deployment.values):
-    if ~np.isnan(i):
-        temp = midshelf_nitrate.where(midshelf_nitrate.deployment == i, drop=True)
-        temp = temp.isel(depth=slice(0, 10))
-        if i == 18:
-            baseline.append(-10)
-        else:
-            temp = temp.where(temp.density > 22, drop=True)
-            baseline.append(temp.nitrate.mean().values)
-        # print(i, baseline[-1])
-
-baseline = np.array(baseline)
-
-# %%
-temp = []
-for i, d in enumerate(np.unique(midshelf_nitrate.deployment.values)):
-    if ~np.isnan(d):
-        temp.append(midshelf_nitrate.where(midshelf_nitrate.deployment == d, drop=True))
-        temp[i]["nitrate"] = temp[i].nitrate - baseline[i]
-midshelf_nitrate = xr.concat(temp, dim="time")
-midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.nitrate < 45)
-midshelf_nitrate = midshelf_nitrate.drop_duplicates("time")
-
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 3, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 4, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 5, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 6, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 7, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 9, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 14, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 18, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 22, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 26, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 29, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 30, drop=True)
-
-# %%
-kms = np.arange(-18500, -8000, 1000)
-bottom_depth_midshelf = 80 / 18500 * kms
-
-# %%
-# # constant slope isonitrate lines (ignores surface towards coast)
-# cross_shelf_depth_int_nitr = []
-# for x, z in zip(kms, bottom_depth_midshelf):
-#     cross_shelf_depth_int_nitr.append(xr.apply_ufunc(lambda x, y: np.array([np.trapz(yi[~np.isnan(yi)], x[~np.isnan(yi)]) if len(yi[~np.isnan(yi)]) > 30 else np.nan for yi in y]), midshelf_nitrate.depth.sel(depth=slice(80+z, None)).values, midshelf_nitrate.nitrate.sel(depth=slice(80+z, None)).values))
-
-# # entire water column isonitrate lines (ignores upwards slope of isonitrate towards coast)
-# cross_shelf_depth_int_nitr = []
-# for x, z in zip(kms, bottom_depth_midshelf):
-#     depths = np.linspace(1, 80 + z, midshelf_nitrate.depth.size)
-#     cross_shelf_depth_int_nitr.append(xr.apply_ufunc(lambda x, y: np.array([np.trapz(yi[~np.isnan(yi)], x[~np.isnan(yi)]) if len(yi[~np.isnan(yi)]) > 30 else np.nan for yi in y]), depths, midshelf_nitrate.nitrate.values))
-
-# %%
-# midshelf_nitrate['depth_integrated_nitrate'] = (
-#     ['x', 'time'], cross_shelf_depth_int_nitr
-# )
-# midshelf_nitrate['depth_integrated_nitrate'] = midshelf_nitrate['depth_integrated_nitrate'].where(midshelf_nitrate['depth_integrated_nitrate'].sum('x') > 5000)
-# midshelf_nitrate['depth_integrated_nitrate'] = midshelf_nitrate['depth_integrated_nitrate'].interpolate_na('time', limit=40)
-
-# %%
-
-
-# %%
-# midshelf_nitrate['depth_integrated_nitrate'] = (
-#     ['time'],
-#     xr.apply_ufunc(lambda x, y: np.array([np.trapz(yi[~np.isnan(yi)], x[~np.isnan(yi)]) if len(yi[~np.isnan(yi)]) > 40 else np.nan for yi in y]), midshelf_nitrate.depth.values, midshelf_nitrate.nitrate.values)
-# )
-# midshelf_nitrate = midshelf_nitrate.resample(time='1D').mean()
-# midshelf_nitrate['dndt'] = midshelf_nitrate['depth_integrated_nitrate'].sum('x').differentiate('time', datetime_unit='s')*1000
-# midshelf_nitrate = midshelf_nitrate.dropna('time', how='all', subset=['nitrate'])
-# midshelf_nitrate['dndt'] = (['time'], medfilt(midshelf_nitrate['dndt'].values, 5))
-# midshelf_nitrate['dndt'] = midshelf_nitrate['dndt'].where(midshelf_nitrate['dndt'] != 0)
-
-# %%
 midshelf_nitrate["depth_integrated_nitrate"] = (
     ["time"],
     xr.apply_ufunc(
@@ -309,20 +204,13 @@ midshelf_nitrate["depth_integrated_nitrate"] = (
         midshelf_nitrate.nitrate.values,
     ),
 )
+
 midshelf_nitrate = midshelf_nitrate.resample(time="1D").median()
 
 midshelf_nitrate["dndt"] = midshelf_nitrate["depth_integrated_nitrate"].differentiate(
     "time", datetime_unit="s"
 )
 
-# %%
-# plt.plot(midshelf_nitrate['depth_integrated_nitrate'].interpolate_na('time', limit=40).sum('x'))
-
-# %%
-plt.plot(midshelf_nitrate.time, midshelf_nitrate.nitrate)
-
-# %%
-plt.plot(midshelf_nitrate["dndt"].values)
 
 # %% [markdown]
 # ## Wind Data Analysis
@@ -570,26 +458,27 @@ print(
 )
 
 # %%
-temp = nhl_overlapping_bottles.isel(time=0).date
-for i in range(len(nhl_overlapping_bottles.time)):
-    if temp != nhl_overlapping_bottles.isel(time=i).date:
-        plt.figure()
-    plt.plot(
-        nhl_overlapping_bottles.isel(time=i).nitrate,
-        nhl_overlapping_bottles.isel(time=i).temperature,
-        "o",
-    )
-    plt.plot(
-        prof_overlapping_bottles.isel(time=i).nitrate,
-        prof_overlapping_bottles.isel(time=i).temperature,
-        "X",
-    )
-    plt.annotate(
-        f"{nhl_overlapping_bottles.isel(time=i).date.values}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.values)}",
-        (0.9, 0.9),
-        xycoords="axes fraction",
-    )
-    temp = nhl_overlapping_bottles.isel(time=i).date
+if show_bottle_comparisons:
+    temp = nhl_overlapping_bottles.isel(time=0).date
+    for i in range(len(nhl_overlapping_bottles.time)):
+        if temp != nhl_overlapping_bottles.isel(time=i).date:
+            plt.figure()
+        plt.plot(
+            nhl_overlapping_bottles.isel(time=i).nitrate,
+            nhl_overlapping_bottles.isel(time=i).temperature,
+            "o",
+        )
+        plt.plot(
+            prof_overlapping_bottles.isel(time=i).nitrate,
+            prof_overlapping_bottles.isel(time=i).temperature,
+            "X",
+        )
+        plt.annotate(
+            f"{nhl_overlapping_bottles.isel(time=i).date.values}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.values)}",
+            (0.9, 0.9),
+            xycoords="axes fraction",
+        )
+        temp = nhl_overlapping_bottles.isel(time=i).date
 
 # %%
 nhl_crse_inshore = nhl_crse
@@ -680,7 +569,6 @@ prof_overlapping_bottles = []
 prof_notoverlapping_bottles = []
 for i, (t1, t2) in enumerate(zip(temp.time.values, ooi_crse.time.values)):
     if np.abs((t1 - t2) / np.timedelta64(1, "D")) < 1:
-        print((t1 - np.timedelta64(1, "D") - t2) / np.timedelta64(1, "D"))
         ooi_overlapping_bottles.append(ooi_crse.isel(time=i))
         prof_overlapping_bottles.append(
             nitrate.sel(time=t1 - np.timedelta64(1, "D"), method="nearest")
@@ -717,26 +605,27 @@ plt.plot(
 ooi_overlapping_bottles
 
 # %%
-temp = ooi_overlapping_bottles.isel(time=0).time
-for i in range(len(ooi_overlapping_bottles.time)):
-    if temp != ooi_overlapping_bottles.isel(time=i).time:
-        plt.figure()
-    plt.plot(
-        ooi_overlapping_bottles.isel(time=i).nitrate,
-        ooi_overlapping_bottles.isel(time=i).pressure,
-        "o",
-    )
-    plt.plot(
-        prof_overlapping_bottles.isel(time=i).nitrate,
-        prof_overlapping_bottles.isel(time=i).depth,
-        "X",
-    )
-    plt.annotate(
-        f"{ooi_overlapping_bottles.isel(time=i).time.values}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.values)}",
-        (0.9, 0.9),
-        xycoords="axes fraction",
-    )
-    temp = ooi_overlapping_bottles.isel(time=i).time
+if show_bottle_comparisons:
+    temp = ooi_overlapping_bottles.isel(time=0).time
+    for i in range(len(ooi_overlapping_bottles.time)):
+        if temp != ooi_overlapping_bottles.isel(time=i).time:
+            plt.figure()
+        plt.plot(
+            ooi_overlapping_bottles.isel(time=i).nitrate,
+            ooi_overlapping_bottles.isel(time=i).pressure,
+            "o",
+        )
+        plt.plot(
+            prof_overlapping_bottles.isel(time=i).nitrate,
+            prof_overlapping_bottles.isel(time=i).depth,
+            "X",
+        )
+        plt.annotate(
+            f"{ooi_overlapping_bottles.isel(time=i).time.values}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.values)}",
+            (0.9, 0.9),
+            xycoords="axes fraction",
+        )
+        temp = ooi_overlapping_bottles.isel(time=i).time
 
 # %% [markdown]
 # No NH10 nitrate data from NHL cruises.
@@ -1511,7 +1400,7 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
         if len(data["depth"]) > 0:
-            flux_60_80[i, j] = np.trapz(data["mean"], data["depth"])
+            flux_60_80[i, j] = np.trapezoid(data["mean"], data["depth"])
 
         # 20 m to 40 m flux
         data = composite_midshelf_nitrate_flux_monthly.sel(
@@ -1520,14 +1409,14 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
         if len(data["depth"]) > 0:
-            flux_20_60[i, j] = np.trapz(data["mean"], data["depth"])
+            flux_20_60[i, j] = np.trapezoid(data["mean"], data["depth"])
 
         # full flux
         data = composite_midshelf_nitrate_flux_monthly.sel(month=m, time=t)
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
         if len(data["depth"]) > 0:
-            flux_full[i, j] = np.trapz(data["mean"], data["depth"])
+            flux_full[i, j] = np.trapezoid(data["mean"], data["depth"])
 
 # %%
 # c = ['#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377']
@@ -1603,7 +1492,7 @@ velocity_nh10_flux["nitrate_flux_depth_integrated"] = (
     xr.apply_ufunc(
         lambda x, y: np.array(
             [
-                np.trapz(yi[~np.isnan(yi)], x[~np.isnan(yi)])
+                np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)])
                 if len(yi[~np.isnan(yi)]) > 10
                 else np.nan
                 for yi in y
@@ -2295,44 +2184,6 @@ def reshape_plots(fig, axs, r, c):
 
 
 # %%
-# # broadscale_nh = broadscale_binned.sel(station=[s.startswith('NH') for s in broadscale_binned.station.values])
-# # temp = broadscale_binned.where(broadscale_binned.station=='NH15', drop=True)
-
-# fig, axs = plt.subplots(1, len(transect_station)*16, figsize=(15, 20), sharey=False)
-# n = broadscale_binned.station.values.size
-# p = 0
-# for i, (stat, trans) in enumerate(transect_station.items()):
-#     # print(stat, trans)
-#     mask = [s.startswith(stat) for s in broadscale_binned.station.values]
-#     temp = broadscale_binned.station.values[mask]
-#     temp = temp[np.argsort([int(re.split('(\d+)', s)[1]) for s in temp])]
-#     row = 0
-#     for stat in temp:
-#         if int(re.split('(\d+)', stat)[1]) < 50:
-#             temp = broadscale_binned.sel(station=stat)
-#             broadscale_depth = temp.depth.values
-#             broadscale_mean = temp.mean(dim='time').no3.values
-#             broadscale_std = temp.std(dim='time').no3.values
-#             broadscale_count = temp.count(dim='time').no3.values
-#             broadscale_ci = np.array([std/np.sqrt(n)*distributions.t(n-1).isf(0.025) for std, n in zip(broadscale_std, broadscale_count)])
-#             axs[p].plot(broadscale_mean, -broadscale_depth, color='black')
-#             axs[p].plot(np.stack([broadscale_mean-broadscale_ci, broadscale_mean+broadscale_ci]), np.stack([-broadscale_depth, -broadscale_depth]), marker='|', color='black')
-#             axs[p].plot(broadscale_mean, -broadscale_depth, marker='o', color='black')
-#             axs[p].set_title(stat)
-#             axs[p].set_xlim(0, 50)
-#             if ~np.all(np.isnan(temp.no3)):
-#                 ymin = -temp.where(~np.all(np.isnan(temp.no3), axis=0), drop=True).depth.max()
-#                 axs[p].set_ylim(ymin-10, 0)
-#             row += 1
-#             p += 1
-#     if row < 16:
-#         for i in range(row, 16):
-#             axs[p].axis('off')
-#             p += 1
-# reshape_plots(fig, axs, 11, 16)
-
-
-# %%
 cc = cycler(marker=["o", "X", "+", "*", "o", "X", "+", "*", "o", "X", "+"]) + cycler(
     color=[
         "#4477AA",
@@ -2584,9 +2435,6 @@ labels = labels[
 ]
 axs[-1].legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5))
 [ax.set_ylim(-200, 0) for ax in axs]
-
-# %%
-10 / 500e3
 
 # %%
 (
