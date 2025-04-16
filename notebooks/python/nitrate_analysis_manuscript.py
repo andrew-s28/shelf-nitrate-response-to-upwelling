@@ -128,14 +128,6 @@ nitrate["dndt"] = nitrate["depth_integrated_nitrate"].differentiate(
 nitrate = nitrate.dropna("time", how="all", subset=["nitrate"])
 
 # %%
-plt.plot(
-    nitrate.where(nitrate.deployment == 18, drop=True)["depth_integrated_nitrate"].time,
-    nitrate.where(nitrate.deployment == 18, drop=True)["depth_integrated_nitrate"].mean(
-        dim="depth"
-    ),
-)
-
-# %%
 hist_total = np.zeros((50, 50))
 x_bins = np.linspace(21, 27, 51)
 y_bins = np.linspace(-5, 35, 51)
@@ -160,20 +152,6 @@ plt.colorbar(label="Count")
 # plt.xlim(15, 30)
 plt.axhline(-3, c="k", lw=2)
 
-# %%
-plt.scatter(nitrate.density, nitrate.nitrate)
-plt.scatter(
-    nitrate.where(nitrate.deployment == 17).density,
-    nitrate.where(nitrate.deployment == 17).nitrate,
-)
-
-# %%
-fig, ax = plt.subplots(len(deployments), sharey=True, figsize=(10, 30))
-for i, d in enumerate(deployments):
-    temp = nitrate.where(nitrate.deployment == d, drop=True)
-    ax[i].plot(temp.time, temp.nitrate, ".")
-    ax[i].set_ylim(-5, 50)
-
 # %% [markdown]
 # ## Midshelf Nitrate Analysis
 
@@ -184,7 +162,7 @@ for i, d in enumerate(deployments):
 midshelf_nitrate = xr.open_dataset(
     os.path.join(
         notebook_dir,
-        "../data/CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2023-09-23.nc",
+        "../data/CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14.nc",
     )
 )
 midshelf_nitrate = midshelf_nitrate.rename(
@@ -193,68 +171,7 @@ midshelf_nitrate = midshelf_nitrate.rename(
 
 
 # %%
-plt.figure(figsize=(10, 4))
-temp = midshelf_nitrate.copy()
-for i, d in enumerate(temp.depth):
-    plt.plot(temp.time, temp.nitrate.isel(depth=i))
-plt.figure(figsize=(10, 4))
-
-# %%
-fig, ax = plt.subplots(
-    len(
-        np.unique(midshelf_nitrate.deployment.values)[
-            ~np.isnan(np.unique(midshelf_nitrate.deployment.values))
-        ]
-    ),
-    sharey=True,
-    figsize=(10, 30),
-)
-for i, d in enumerate(
-    np.unique(midshelf_nitrate.deployment.values)[
-        ~np.isnan(np.unique(midshelf_nitrate.deployment.values))
-    ]
-):
-    temp = midshelf_nitrate.where(midshelf_nitrate.deployment == d, drop=True)
-    ax[i].plot(temp.time, temp.nitrate, ".")
-    ax[i].set_ylim(-5, 50)
-
-# %%
-baseline = []
-for i in np.unique(midshelf_nitrate.deployment.values):
-    if ~np.isnan(i):
-        temp = midshelf_nitrate.where(midshelf_nitrate.deployment == i, drop=True)
-        temp = temp.isel(depth=slice(0, 10))
-        if i == 18:
-            baseline.append(-10)
-        else:
-            temp = temp.where(temp.density > 22, drop=True)
-            baseline.append(temp.nitrate.mean().values)
-        # print(i, baseline[-1])
-
-baseline = np.array(baseline)
-
-# %%
-temp = []
-for i, d in enumerate(np.unique(midshelf_nitrate.deployment.values)):
-    if ~np.isnan(d):
-        temp.append(midshelf_nitrate.where(midshelf_nitrate.deployment == d, drop=True))
-        temp[i]["nitrate"] = temp[i].nitrate - baseline[i]
-midshelf_nitrate = xr.concat(temp, dim="time")
-midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.nitrate < 45)
-midshelf_nitrate = midshelf_nitrate.drop_duplicates("time")
-
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 3, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 4, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 5, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 6, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 7, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 9, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 14, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 18, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 22, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 26, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 29, drop=True)
-# midshelf_nitrate = midshelf_nitrate.where(midshelf_nitrate.deployment != 30, drop=True)
+plt.scatter(midshelf_nitrate.density, midshelf_nitrate.nitrate)
 
 # %%
 kms = np.arange(-18500, -8000, 1000)
@@ -280,9 +197,6 @@ bottom_depth_midshelf = 80 / 18500 * kms
 # midshelf_nitrate['depth_integrated_nitrate'] = midshelf_nitrate['depth_integrated_nitrate'].interpolate_na('time', limit=40)
 
 # %%
-
-
-# %%
 # midshelf_nitrate['depth_integrated_nitrate'] = (
 #     ['time'],
 #     xr.apply_ufunc(lambda x, y: np.array([np.trapz(yi[~np.isnan(yi)], x[~np.isnan(yi)]) if len(yi[~np.isnan(yi)]) > 40 else np.nan for yi in y]), midshelf_nitrate.depth.values, midshelf_nitrate.nitrate.values)
@@ -300,7 +214,7 @@ midshelf_nitrate["depth_integrated_nitrate"] = (
         lambda x, y: np.array(
             [
                 np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)])
-                if len(yi[~np.isnan(yi)]) > 40
+                if len(yi[~np.isnan(yi)]) > 20
                 else np.nan
                 for yi in y
             ]
@@ -314,15 +228,6 @@ midshelf_nitrate = midshelf_nitrate.resample(time="1D").median()
 midshelf_nitrate["dndt"] = midshelf_nitrate["depth_integrated_nitrate"].differentiate(
     "time", datetime_unit="s"
 )
-
-# %%
-# plt.plot(midshelf_nitrate['depth_integrated_nitrate'].interpolate_na('time', limit=40).sum('x'))
-
-# %%
-plt.plot(midshelf_nitrate.time, midshelf_nitrate.nitrate)
-
-# %%
-plt.plot(midshelf_nitrate["dndt"].values)
 
 # %% [markdown]
 # ## Wind Data Analysis
@@ -679,7 +584,6 @@ prof_overlapping_bottles = []
 prof_notoverlapping_bottles = []
 for i, (t1, t2) in enumerate(zip(temp.time.values, ooi_crse.time.values)):
     if np.abs((t1 - t2) / np.timedelta64(1, "D")) < 1:
-        print((t1 - np.timedelta64(1, "D") - t2) / np.timedelta64(1, "D"))
         ooi_overlapping_bottles.append(ooi_crse.isel(time=i))
         prof_overlapping_bottles.append(
             nitrate.sel(time=t1 - np.timedelta64(1, "D"), method="nearest")
@@ -701,14 +605,17 @@ ooi_overlapping_bottles = xr.concat(ooi_overlapping_bottles, dim="time")
 prof_overlapping_bottles = xr.concat(prof_overlapping_bottles, dim="time")
 
 # %%
+prof_overlapping_bottles.isel(time=-1)
+
+# %%
 plt.plot(
-    ooi_overlapping_bottles.isel(time=2).nitrate,
-    -ooi_overlapping_bottles.isel(time=2).temp1,
+    ooi_overlapping_bottles.isel(time=-1).temp1,
+    ooi_overlapping_bottles.isel(time=-1).pressure,
     "o",
 )
 plt.plot(
-    prof_overlapping_bottles.isel(time=2).nitrate,
-    -prof_overlapping_bottles.isel(time=2).temperature,
+    prof_overlapping_bottles.isel(time=-1).temperature,
+    prof_overlapping_bottles.isel(time=-1).depth,
     "X",
 )
 
@@ -718,8 +625,7 @@ ooi_overlapping_bottles
 # %%
 temp = ooi_overlapping_bottles.isel(time=0).time
 for i in range(len(ooi_overlapping_bottles.time)):
-    if temp != ooi_overlapping_bottles.isel(time=i).time:
-        plt.figure()
+    plt.figure()
     plt.plot(
         ooi_overlapping_bottles.isel(time=i).nitrate,
         ooi_overlapping_bottles.isel(time=i).pressure,
@@ -1322,9 +1228,9 @@ midshelf_nitrate_monthly["ci"] = (
 # %%
 fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(7, 4))
 axs = axs.flatten()
-for i, m in enumerate(midshelf_nitrate_monthly.sel(month=slice(4, 9))["month"]):
-    monthly_data = midshelf_nitrate_monthly.sel(month=m)
-    monthly_data = monthly_data.where(monthly_data["count"] > 5, drop=True)
+for i, m in enumerate(range(4, 10)):
+    monthly_data = midshelf_nitrate_monthly.isel(month=m)
+    # monthly_data = monthly_data.where(monthly_data["count"] > 5, drop=True)
     axs[i].plot(monthly_data["mean"], -monthly_data["depth"], color="black")
     axs[i].fill_betweenx(
         -monthly_data["depth"],
@@ -1338,7 +1244,7 @@ for i, m in enumerate(midshelf_nitrate_monthly.sel(month=slice(4, 9))["month"]):
     # axs[i].plot(monthly_data['mean'] + monthly_data['ci'], -monthly_data['depth'], color='black', ls='--', label=f'NEff$\\approx${np.ceil(monthly_data['count'].mean()/7)}')
     # axs[i].plot(monthly_data['mean'] + monthly_data['ci'], -monthly_data['depth'], color='black', ls='--')
     axs[i].annotate(
-        f"({string.ascii_lowercase[i]})\n{calendar.month_abbr[m.values]}\nN$^*\\approx${np.ceil(monthly_data['count'].mean().values / 7)}",
+        f"({string.ascii_lowercase[i]})\n{calendar.month_abbr[m]}\nN$^*\\approx${np.ceil(monthly_data['count'].mean().values / 7)}",
         xy=(0.075, 0.1),
         xycoords="axes fraction",
         fontsize=10,
@@ -1509,7 +1415,7 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
         if len(data["depth"]) > 0:
-            flux_60_80[i, j] = np.trapz(data["mean"], data["depth"])
+            flux_60_80[i, j] = np.trapezoid(data["mean"], data["depth"])
 
         # 20 m to 40 m flux
         data = composite_midshelf_nitrate_flux_monthly.sel(
@@ -1518,14 +1424,14 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
         if len(data["depth"]) > 0:
-            flux_20_60[i, j] = np.trapz(data["mean"], data["depth"])
+            flux_20_60[i, j] = np.trapezoid(data["mean"], data["depth"])
 
         # full flux
         data = composite_midshelf_nitrate_flux_monthly.sel(month=m, time=t)
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
         if len(data["depth"]) > 0:
-            flux_full[i, j] = np.trapz(data["mean"], data["depth"])
+            flux_full[i, j] = np.trapezoid(data["mean"], data["depth"])
 
 # %%
 # c = ['#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377']
@@ -3287,6 +3193,229 @@ axs[0].text(
 #         dpi=600,
 #     )
 
+
+# %%
+def plot_wind_velocity_nitrate_time_series(
+    wind: xr.Dataset,
+    velocity: xr.Dataset,
+    inner_nitrate: xr.Dataset,
+    midshelf_nitrate: xr.Dataset,
+    year: int,
+    save: bool = False,
+) -> None:
+    if save:
+        plt.ioff()
+    # single year time series
+    fig, axs = plt.subplots(2, 2, figsize=(7, 4), sharex=True, layout="constrained")
+
+    wind = wind.where(wind["time.year"] == year, drop=True)
+    fig.align_ylabels(axs)
+    axs[0, 0].plot(wind.time, wind.coare_y, "--", label="Stress", zorder=1.8)
+    axs[0, 0].plot(
+        wind.time, wind.w5d, color="#DDAA33", label=r"$\mathrm{W_{5d}}$", zorder=1.8
+    )
+    axs[0, 0].axhline(0, ls="-", lw=2, color="black", zorder=1.5)
+    axs[0, 0].set_ylim(-0.25, 0.25)
+    axs[0, 0].set_xlim(np.datetime64(f"{year}-04-01"), np.datetime64(f"{year}-09-30"))
+    axs[0, 0].tick_params(axis="x", which="minor", bottom=False, top=False)
+    axs[0, 0].text(
+        0.02,
+        0.05,
+        "Upwelling\nFavorable",
+        bbox=dict(
+            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+        ),
+        transform=axs[0, 0].transAxes,
+        va="bottom",
+        ha="left",
+        zorder=2,
+    )
+    axs[0, 0].text(
+        0.02,
+        0.95,
+        "Downwelling\nFavorable",
+        bbox=dict(
+            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+        ),
+        transform=axs[0, 0].transAxes,
+        va="top",
+        ha="left",
+        zorder=2,
+    )
+    axs[0, 0].set_ylabel("Along-shelf\nWind Stress [$\\mathsf{N\\;m^{-2}}$]")
+    axs[0, 0].legend(
+        ncols=2, loc="upper right", frameon=True, framealpha=1, columnspacing=1
+    )
+
+    axs[1, 0].axhline(0, zorder=1.5, color="k")
+    axs[1, 0].plot(
+        velocity.where(velocity["time.year"] == year, drop=True).time,
+        velocity.where(velocity["time.year"] == year, drop=True).sel(depth=30).cs,
+        "--",
+        label="30 m",
+        color="#BB5566",
+    )
+    axs[1, 0].plot(
+        velocity.where(velocity["time.year"] == year, drop=True).time,
+        velocity.where(velocity["time.year"] == year, drop=True).sel(depth=70).cs,
+        label="70 m",
+        color="#228833",
+    )
+    axs[1, 0].set_ylabel("Cross-shelf\nVelocity [$\\mathsf{m \\; s^{-1}}$]")
+    axs[1, 0].legend(
+        ncols=2, loc="upper right", frameon=True, framealpha=1, columnspacing=1
+    )
+    axs[1, 0].text(
+        0.02,
+        0.05,
+        "Offshore",
+        bbox=dict(
+            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+        ),
+        transform=axs[1, 0].transAxes,
+        va="bottom",
+        ha="left",
+        zorder=2,
+    )
+    axs[1, 0].text(
+        0.02,
+        0.95,
+        "Onshore",
+        bbox=dict(
+            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+        ),
+        transform=axs[1, 0].transAxes,
+        va="top",
+        ha="left",
+        zorder=2,
+    )
+
+    deployment = np.unique(inner_nitrate.deployment)
+    deployment = deployment[~np.isnan(deployment)]
+    inner_nitrate = inner_nitrate.where(inner_nitrate["time.year"] == year, drop=True)
+    cmap = cmo.tools.crop_by_percent(
+        cmo.deep,
+        10,
+        which="min",
+        N=len(inner_nitrate.depth.where(inner_nitrate.depth < 25, drop=True)),
+    )
+    cdict = cmo.tools.get_dict(
+        cmap, N=len(inner_nitrate.depth.where(inner_nitrate.depth < 25, drop=True))
+    )
+    deep = LinearSegmentedColormap("cmap", cdict)
+    for i, d in enumerate(inner_nitrate.depth):
+        for j, dep in enumerate(deployment):
+            temp = inner_nitrate.where(inner_nitrate.deployment == dep).where(
+                inner_nitrate.nitrate < 38
+            )
+            axs[0, 1].plot(
+                temp.sel(depth=d).time,
+                temp.sel(depth=d).nitrate,
+                color=deep((i + 1) / len(inner_nitrate.depth)),
+                lw=1.5,
+            )
+
+    myFmt = mdates.DateFormatter("%b")
+    axs[0, 1].xaxis.set_major_formatter(myFmt)
+    axs[0, 1].set_ylim(0, 40)
+    axs[0, 1].set_yticks([0, 10, 20, 30, 40])
+    axs[0, 1].set_ylabel("Inshore Nitrate\nConc. [$\\mathsf{mmol \\; m^{-3}}$]")
+    # fig.align_ylabels(axs)
+    deep_r = cmo.tools.crop_by_percent(
+        cmo.deep_r, 10, which="max", N=len(temp.depth.where(temp.depth < 25, drop=True))
+    )
+    cax = fig.add_axes(
+        rect=(
+            axs[0, 1].get_position().x0 + 0.475,
+            axs[0, 1].get_position().y0 + 0.05,
+            0.015,
+            axs[0, 1].get_position().height,
+        )
+    )
+    scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-20, vmax=0))
+    cbar = fig.colorbar(scm, cax=cax, fraction=0.01, extend="min")
+    cbar.ax.tick_params(labelsize=10, pad=5)
+    cbar.ax.minorticks_off()
+    cbar.ax.get_yaxis().set_ticks([0, -5, -10, -15, -20])
+    cbar.set_label("Depth [m]", labelpad=10, rotation=270)
+
+    deployment = np.unique(midshelf_nitrate.deployment)
+    deployment = deployment[~np.isnan(deployment)]
+    midshelf_nitrate = midshelf_nitrate.where(
+        midshelf_nitrate["time.year"] == year, drop=True
+    )
+    cmap = cmo.tools.crop_by_percent(
+        cmo.deep,
+        10,
+        which="min",
+        N=len(midshelf_nitrate.depth.where(midshelf_nitrate.depth < 80, drop=True)),
+    )
+    cdict = cmo.tools.get_dict(
+        cmap,
+        N=len(midshelf_nitrate.depth.where(midshelf_nitrate.depth < 80, drop=True)),
+    )
+    deep = LinearSegmentedColormap("cmap", cdict)
+    for i, d in enumerate(midshelf_nitrate.depth):
+        for j, dep in enumerate(deployment):
+            temp = midshelf_nitrate.where(cond=midshelf_nitrate.deployment == dep)
+            if (len(temp_dep.time) > 0) & (
+                ~np.all(np.isnan(temp.sel(depth=d).nitrate))
+            ):
+                axs[1, 1].plot(
+                    temp.sel(depth=d).time,
+                    temp.sel(depth=d).nitrate,
+                    color=deep((i + 1) / len(midshelf_nitrate.depth)),
+                    lw=1.5,
+                )
+    myFmt = mdates.DateFormatter("%b")
+    axs[1, 1].xaxis.set_major_formatter(myFmt)
+    axs[1, 1].set_ylim(0, 40)
+    axs[1, 1].set_yticks([0, 10, 20, 30, 40])
+    axs[1, 1].set_ylabel("Midshelf Nitrate\nConc. [$\\mathsf{mmol \\; m^{-3}}$]")
+    deep_r = cmo.tools.crop_by_percent(
+        cmo.deep_r, 10, which="max", N=len(temp.depth.where(temp.depth < 80, drop=True))
+    )
+    cax = fig.add_axes(
+        rect=(
+            axs[1, 1].get_position().x0 + 0.475,
+            axs[1, 1].get_position().y0,
+            0.015,
+            axs[1, 1].get_position().height,
+        )
+    )
+    scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-80, vmax=0))
+    cbar = fig.colorbar(scm, cax=cax, fraction=0.01, extend="min")
+    cbar.ax.tick_params(labelsize=10, pad=5)
+    cbar.ax.minorticks_off()
+    cbar.ax.get_yaxis().set_ticks([0, -20, -40, -60, -80])
+    cbar.set_label("Depth [m]", labelpad=10, rotation=270)
+
+    axs[0, 0].annotate("(a)", xy=(0.9, 0.05), xycoords="axes fraction", fontsize=10)
+    axs[0, 1].annotate("(b)", xy=(0.9, 0.05), xycoords="axes fraction", fontsize=10)
+    axs[1, 0].annotate("(c)", xy=(0.9, 0.05), xycoords="axes fraction", fontsize=10)
+    axs[1, 1].annotate("(d)", xy=(0.9, 0.05), xycoords="axes fraction", fontsize=10)
+    axs[0, 0].minorticks_off()
+    axs[0, 1].minorticks_off()
+    axs[1, 0].minorticks_off()
+    axs[1, 1].minorticks_off()
+
+    if save:
+        plt.savefig(
+            os.path.join(
+                notebook_dir, f"../manuscript/si/wind-nitrate-time-series-{year}.pdf"
+            ),
+            format="pdf",
+            bbox_inches="tight",
+        )
+    plt.ion()
+
+
+# %%
+for i in range(2014, 2025):
+    plot_wind_velocity_nitrate_time_series(
+        wind, velocity_nh10, nitrate, midshelf_nitrate, i, save=True
+    )
+
 # %%
 # single year time series
 fig, axs = plt.subplots(2, 2, figsize=(7, 4), sharex=True, layout="constrained")
@@ -3465,6 +3594,85 @@ plt.savefig(
     os.path.join(notebook_dir, "../manuscript/wind-nitrate-time-series-2021.pdf"),
     format="pdf",
     bbox_inches="tight",
+)
+
+# %% [markdown]
+# ## Wind/Velocity/Nitrate Correlations
+
+# %%
+np.isin(wind["time.month"], [4, 5, 6, 7, 8, 9])
+
+# %%
+vel_time = velocity_nh10.where(
+    velocity_nh10["time.month"].isin([4, 5, 6, 7, 8, 9]), drop=True
+).time
+wind_al_vel, vel_al_wind = xr.align(
+    wind.where(wind["time.month"].isin([4, 5, 6, 7, 8, 9]), drop=True),
+    velocity_nh10.where(
+        velocity_nh10["time.month"].isin([4, 5, 6, 7, 8, 9]), drop=True
+    ),
+)
+
+
+# %%
+lags = np.arange(-10, 11)
+corr, confint, n = lagged_correlation(
+    wind_al_vel.coare_y, vel_al_wind.cs.sel(depth=70), lags
+)
+
+n_eff = np.nanmean(n) / 11
+alpha = 0.05
+rho_crit = np.sqrt(
+    distributions.f.isf(alpha, 1, n_eff - 2)
+    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+)
+
+plt.plot(lags, corr)
+plt.fill_between(lags, confint[:, 0], confint[:, 1], color="black", alpha=0.5)
+plt.xlabel("Lag [$\\mathsf{days}$]")
+plt.ylabel("Wind - 70 m Cross-shelf Velocity\nCorrelation Coefficient")
+plt.axhline(-rho_crit, color="k", ls="--")
+
+# %%
+lags = np.arange(-10, 11)
+corr, confint, n = lagged_correlation(
+    wind_al_vel.coare_y, vel_al_wind.cs.sel(depth=30), lags
+)
+
+n_eff = np.nanmean(n) / 11
+alpha = 0.05
+rho_crit = np.sqrt(
+    distributions.f.isf(alpha, 1, n_eff - 2)
+    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+)
+
+plt.plot(lags, corr)
+plt.fill_between(lags, confint[:, 0], confint[:, 1], color="black", alpha=0.5)
+plt.xlabel("Lag [$\\mathsf{days}$]")
+plt.ylabel("Wind - 30 m Cross-shelf Velocity\nCorrelation Coefficient")
+plt.axhline(-rho_crit, color="k", ls="--")
+
+# %%
+for i, d in enumerate([30, 70]):
+    cmap = cmo.dense
+    plt.plot(
+        np.arange(1, 13),
+        velocity_nh10.cs.groupby("time.month").std(dim="time").sel(depth=d),
+        color=["k", "blue"][i],
+    )
+
+scm = plt.cm.ScalarMappable(
+    cmap=cmap, norm=plt.Normalize(vmin=0, vmax=vel_al_wind.depth.max())
+)
+
+cmap = cmap.from_list(cmo.dense, cmap(np.linspace(0, 1, 11)), 11)
+cbar = plt.colorbar(mappable=scm, ax=plt.gca(), orientation="vertical")
+cbar.set_label("Depth [m]")
+
+# %%
+(
+    vel_al_wind.std(dim="time").sel(depth=30).cs.values,
+    vel_al_wind.std(dim="time").sel(depth=70).cs.values,
 )
 
 # %% [markdown]
@@ -4127,7 +4335,7 @@ axs.fill_between(
 )
 
 axs.set_xlim(4, 10)
-axs.set_ylim(0, 20)
+axs.set_ylim(0, 25)
 axs.minorticks_off()
 axs.legend(loc="lower right")
 # axs.xaxis.set_major_locator(mdates.MonthLocator())
