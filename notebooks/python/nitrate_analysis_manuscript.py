@@ -734,6 +734,31 @@ cmap = cmo.tools.crop_by_percent(cmo.balance_i, 30, which="both")  # type: ignor
 cmap = cmap.from_list("cmap", cmap(np.linspace(0, 1, 11)), 11)
 
 # %%
+new_velocity_nh10 = xr.open_dataset(
+    "../data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc"
+)
+old_velocity_nh10 = xr.open_mfdataset(
+    os.path.join(
+        notebook_dir,
+        "../data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_part_*.nc",
+    )
+)
+
+# %%
+old_velocity_nh10
+
+# %%
+times = old_velocity_nh10["time"]
+
+# %%
+plt.plot(
+    new_velocity_nh10.sel(time=times, method="nearest").u,
+    old_velocity_nh10.squeeze().eastward_velocity,
+    ".",
+)
+plt.gca().set_aspect("equal")
+
+# %%
 velocity_nh10 = xr.open_mfdataset(
     os.path.join(
         notebook_dir,
@@ -742,12 +767,12 @@ velocity_nh10 = xr.open_mfdataset(
 )
 velocity_nh10 = velocity_nh10.squeeze()
 velocity_original_depths = velocity_nh10.depth
-
+velocity_nh10 = xr.open_dataset("../data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc")
 
 # apply lanczos filter to velocity data with 33 hour window
 wts = firwin(120, 1 / 33, window="lanczos", fs=1)
-evel_filt = filtfilt(wts, 1, velocity_nh10["eastward_velocity"].values)
-nvel_filt = filtfilt(wts, 1, velocity_nh10["northward_velocity"].values)
+evel_filt = filtfilt(wts, 1, velocity_nh10["u"].values)
+nvel_filt = filtfilt(wts, 1, velocity_nh10["v"].values)
 theta, major, minor = util.princax(
     np.nanmean(nvel_filt, axis=1), np.nanmean(evel_filt, axis=1)
 )
@@ -762,9 +787,9 @@ velocity_nh10 = velocity_nh10.squeeze()
 velocity_nh10 = velocity_nh10.where(
     ((velocity_nh10["time.month"] > 3) & (velocity_nh10["time.month"] < 10)), drop=True
 )
-velocity_nh10["density"] = gsw.rho_t_exact(
-    velocity_nh10.salinity, velocity_nh10.temperature, velocity_nh10.depth
-)
+# velocity_nh10["density"] = gsw.rho_t_exact(
+#     velocity_nh10.salinity, velocity_nh10.temperature, velocity_nh10.depth
+# )
 
 # %%
 velocity_nh10 = xr.open_mfdataset(
@@ -774,11 +799,12 @@ velocity_nh10 = xr.open_mfdataset(
     )
 )
 velocity_nh10 = velocity_nh10.squeeze()
+# velocity_nh10 = xr.open_dataset("../data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc")
 
 wts = firwin(120, 1 / 33, window="lanczos", fs=1)
 
-evel_filt = filtfilt(wts, 1, velocity_nh10["eastward_velocity"].values)
-nvel_filt = filtfilt(wts, 1, velocity_nh10["northward_velocity"].values)
+evel_filt = filtfilt(wts, 1, velocity_nh10["u"].values)
+nvel_filt = filtfilt(wts, 1, velocity_nh10["v"].values)
 
 velocity_nh10_da = velocity_nh10.mean(dim="depth")
 phi = np.arctan2(np.nanmean(nvel_filt, axis=0), np.nanmean(evel_filt, axis=0))
@@ -792,8 +818,8 @@ velocity_nh10["cs"] = (["depth", "time"], uproj)
 velocity_nh10["eastward_velocity_filt"] = (["depth", "time"], evel_filt)
 
 wts = firwin(120, 1 / 33, window="lanczos", fs=1)
-evel_filt = filtfilt(wts, 1, velocity_nh10["eastward_velocity"].values)
-nvel_filt = filtfilt(wts, 1, velocity_nh10["northward_velocity"].values)
+evel_filt = filtfilt(wts, 1, velocity_nh10["u"].values)
+nvel_filt = filtfilt(wts, 1, velocity_nh10["v"].values)
 theta, major, minor = util.princax(
     np.nanmean(evel_filt, axis=1), np.nanmean(nvel_filt, axis=1)
 )
@@ -821,6 +847,29 @@ plt.plot(
 plt.gca().set_aspect("equal")
 
 # %%
+plt.figure()
+plt.plot(
+    np.nanmean(temp_cs, axis=0),
+    np.nanmean(temp_as, axis=0),
+    "o",
+    mec="black",
+    mfc="black",
+)
+plt.gca().set_aspect("equal")
+# plt.figure()
+plt.plot(
+    np.nanmean(evel_filt, axis=0),
+    np.nanmean(nvel_filt, axis=0),
+    "o",
+    mec="blue",
+    mfc="blue",
+)
+plt.gca().set_aspect("equal")
+
+# %%
+plt.plot(velocity_nh10["time"], velocity_nh10["cs"])
+
+# %%
 velocity_nh10["cs"] = (["depth", "time"], temp_cs)
 velocity_nh10["as"] = (["depth", "time"], temp_as)
 velocity_nh10["cs"] = velocity_nh10["cs"] - velocity_nh10["cs"].mean(dim="depth")
@@ -828,9 +877,9 @@ velocity_nh10["cs"] = velocity_nh10["cs"] - velocity_nh10["cs"].mean(dim="depth"
 velocity_nh10 = velocity_nh10.resample(time="1D").mean()
 velocity_nh10 = velocity_nh10.squeeze()
 # velocity_nh10 = velocity_nh10.where(((velocity_nh10['time.month'] > 3) & (velocity_nh10['time.month'] < 10)) , drop=True)
-velocity_nh10["density"] = gsw.rho_t_exact(
-    velocity_nh10.salinity, velocity_nh10.temperature, velocity_nh10.depth
-)
+# velocity_nh10["density"] = gsw.rho_t_exact(
+#     velocity_nh10.salinity, velocity_nh10.temperature, velocity_nh10.depth
+# )
 
 velocity_nh10 = velocity_nh10.interp(depth=midshelf_nitrate.depth)
 
