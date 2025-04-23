@@ -737,10 +737,16 @@ cmap = cmap.from_list("cmap", cmap(np.linspace(0, 1, 11)), 11)
 new_velocity_nh10 = xr.open_dataset(
     "../data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc"
 )
-old_velocity_nh10 = xr.open_mfdataset(
+# old_velocity_nh10 = xr.open_mfdataset(
+#     os.path.join(
+#         notebook_dir,
+#         "../data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_part_*.nc",
+#     )
+# )
+old_velocity_nh10 = xr.open_dataset(
     os.path.join(
         notebook_dir,
-        "../data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_part_*.nc",
+        "../data/NH10_Mooring_Data/nh10_hourly_data_1997_2021.nc",
     )
 )
 
@@ -751,12 +757,17 @@ old_velocity_nh10
 times = old_velocity_nh10["time"]
 
 # %%
+
+# %%
 plt.plot(
     new_velocity_nh10.sel(time=times, method="nearest").u,
     old_velocity_nh10.squeeze().eastward_velocity,
     ".",
 )
 plt.gca().set_aspect("equal")
+
+# %%
+old_velocity_nh10
 
 # %%
 velocity_nh10 = xr.open_mfdataset(
@@ -782,6 +793,53 @@ velocity_nh10["as"] = (["depth", "time"], temp_as)
 velocity_nh10["cs"] = velocity_nh10["cs"] - velocity_nh10["cs"].mean(dim="depth")
 
 # %%
+old_al, new_al = xr.align(old_velocity_nh10, new_velocity_nh10)
+
+# %%
+old_al.eastward_velocity.squeeze().isel(depth=1)
+
+# %%
+fig, axs = plt.subplots(3, 1, figsize=(5, 3), sharex=True)
+fig.supylabel("Old - New Velocity [m/s]")
+axs[0].plot(
+    old_al.time,
+    old_al.eastward_velocity.squeeze().isel(depth=-1) - new_al.u.isel(depth=-1),
+    "o",
+    label="80 m",
+)
+axs[1].plot(
+    old_al.time,
+    old_al.eastward_velocity.squeeze().isel(depth=20) - new_al.u.isel(depth=20),
+    "go",
+    label="40 m",
+)
+axs[2].plot(
+    old_al.time,
+    old_al.eastward_velocity.squeeze().isel(depth=1) - new_al.u.isel(depth=1),
+    "ro",
+    label="2 m",
+)
+
+plt.figlegend(bbox_to_anchor=(0.99, 0.99), loc="upper right", fontsize=10)
+
+# %%
+plt.plot(new_velocity_nh10.time, new_velocity_nh10.u.isel(depth=-1), "o")
+
+# %%
+plt.plot(
+    old_velocity_nh10.time,
+    old_velocity_nh10.eastward_velocity.squeeze().isel(depth=1),
+    "o",
+)
+
+# %%
+plt.plot(new_velocity_nh10.time, new_velocity_nh10.u.isel(depth=1))
+plt.plot(
+    old_velocity_nh10.time, old_velocity_nh10.eastward_velocity.squeeze().isel(depth=1)
+)
+plt.xlim(np.datetime64("2015-01-01"), np.datetime64("2017-01-01"))
+
+# %%
 velocity_nh10 = velocity_nh10.resample(time="1D").mean()
 velocity_nh10 = velocity_nh10.squeeze()
 velocity_nh10 = velocity_nh10.where(
@@ -795,7 +853,7 @@ velocity_nh10 = velocity_nh10.where(
 velocity_nh10 = xr.open_mfdataset(
     os.path.join(
         notebook_dir,
-        "../data/NH10_Mooring_Data/*.nc",
+        "../data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_part*.nc",
     )
 )
 velocity_nh10 = velocity_nh10.squeeze()
@@ -803,8 +861,8 @@ velocity_nh10 = velocity_nh10.squeeze()
 
 wts = firwin(120, 1 / 33, window="lanczos", fs=1)
 
-evel_filt = filtfilt(wts, 1, velocity_nh10["u"].values)
-nvel_filt = filtfilt(wts, 1, velocity_nh10["v"].values)
+evel_filt = filtfilt(wts, 1, velocity_nh10["eastward_velocity"].values)
+nvel_filt = filtfilt(wts, 1, velocity_nh10["northward_velocity"].values)
 
 velocity_nh10_da = velocity_nh10.mean(dim="depth")
 phi = np.arctan2(np.nanmean(nvel_filt, axis=0), np.nanmean(evel_filt, axis=0))
@@ -818,8 +876,8 @@ velocity_nh10["cs"] = (["depth", "time"], uproj)
 velocity_nh10["eastward_velocity_filt"] = (["depth", "time"], evel_filt)
 
 wts = firwin(120, 1 / 33, window="lanczos", fs=1)
-evel_filt = filtfilt(wts, 1, velocity_nh10["u"].values)
-nvel_filt = filtfilt(wts, 1, velocity_nh10["v"].values)
+evel_filt = filtfilt(wts, 1, velocity_nh10["eastward_velocity"].values)
+nvel_filt = filtfilt(wts, 1, velocity_nh10["northward_velocity"].values)
 theta, major, minor = util.princax(
     np.nanmean(evel_filt, axis=1), np.nanmean(nvel_filt, axis=1)
 )
@@ -845,29 +903,6 @@ plt.plot(
     mfc="blue",
 )
 plt.gca().set_aspect("equal")
-
-# %%
-plt.figure()
-plt.plot(
-    np.nanmean(temp_cs, axis=0),
-    np.nanmean(temp_as, axis=0),
-    "o",
-    mec="black",
-    mfc="black",
-)
-plt.gca().set_aspect("equal")
-# plt.figure()
-plt.plot(
-    np.nanmean(evel_filt, axis=0),
-    np.nanmean(nvel_filt, axis=0),
-    "o",
-    mec="blue",
-    mfc="blue",
-)
-plt.gca().set_aspect("equal")
-
-# %%
-plt.plot(velocity_nh10["time"], velocity_nh10["cs"])
 
 # %%
 velocity_nh10["cs"] = (["depth", "time"], temp_cs)
