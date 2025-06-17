@@ -37,13 +37,22 @@ MIDSHELF_NITRATE_PATH = (
     / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered.nc"
+VEL_PATH = (
+    DATA_DIR
+    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
+)
+
+VELOCITY_VARIABLE = "cs"  # cs for cross-shelf with depth mean subtraced; cs_proj for cross-shelf projected by McCabe et al 2015
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
 velocity = xr.open_dataset(VEL_PATH)
+
+# bit of a lazy way to use the cs_proj variable, since the notebook is set up for cs
+if VELOCITY_VARIABLE == "cs_proj":
+    velocity = velocity.drop_vars("cs").rename({"cs_proj": "cs"})
 
 # resample midshelf nitrate to fill some of the gaps for composite calclulations
 midshelf_nitrate = midshelf_nitrate.resample(time="1D").mean()

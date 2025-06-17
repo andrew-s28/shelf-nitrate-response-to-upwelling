@@ -41,18 +41,13 @@ MIDSHELF_NITRATE_PATH = (
     / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered.nc"
 GEBCO_PATH = list(Path(DATA_DIR / "GEBCO/").glob("*.nc"))
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
-velocity = xr.open_dataset(VEL_PATH)
 bathymetry = xr.open_mfdataset(GEBCO_PATH)
-
-# interpolate velocity depths to match 1 meter bins in midshelf nitrate
-velocity = velocity.interp(depth=midshelf_nitrate.depth)
 
 
 # %%
