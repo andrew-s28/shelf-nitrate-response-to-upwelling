@@ -174,3 +174,9 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+figures/
+data/NH10_Mooring_Data/ADCP*
+data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise*
+data/NH10_Mooring_Data/nh10_hourly_data_1997_2021.nc
+presentation/*.pptx
