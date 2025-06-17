@@ -18,23 +18,28 @@ import xarray as xr
 from scipy import signal as sig
 
 if TYPE_CHECKING:
-    from numpy import double, int_
-    from numpy.typing import NDArray
+    from typing import TypeVar
+
+    from numpy import double, float64, floating
+    from numpy.typing import NBitBase, NDArray
+
+    T = floating[TypeVar("T", bound=NBitBase)]
+
 
 SCRIPT_DIR = Path().resolve()
 DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
 VELOCITY_FILE = list(
-    Path(DATA_DIR / "NH10_Mooring_Data").glob("nh10_hourly_data_1997_2021_part*.nc")
+    Path(DATA_DIR / "NH10_Mooring_Data").glob("ADCP_NH10_1997_2024_V5*.nc")
 )
 VELOCITY_SAVE_FILE = Path(
-    "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered.nc"
+    "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
 )
 
 
 def princax(
-    u: NDArray[double | int_] | xr.DataArray, v: NDArray[double | int_] | xr.DataArray
+    u: NDArray[double] | xr.DataArray, v: NDArray[double] | xr.DataArray
 ) -> tuple[double, double, double]:
     """
     Determines the principal axis of variance for the east and north velocities defined by u and v
@@ -82,10 +87,10 @@ def princax(
 
 
 def rot(
-    u: NDArray[double | int_] | xr.DataArray,
-    v: NDArray[double | int_] | xr.DataArray,
-    theta: float | int | double | int_,
-) -> tuple[NDArray[double | int_], NDArray[double | int_]]:
+    u: NDArray[T] | xr.DataArray,
+    v: NDArray[T] | xr.DataArray,
+    theta: float | int | double | floating,
+) -> tuple[NDArray[T], NDArray[T]]:
     """
     Rotates a vector counter clockwise or a coordinate system clockwise
     Designed to be used with theta output from princax(u, v)
@@ -120,47 +125,53 @@ velocity = xr.open_mfdataset(
 )
 velocity = velocity.squeeze()
 # rename for convienience
-velocity = velocity.rename(
-    {
-        "eastward_velocity": "u",
-        "northward_velocity": "v",
-    }
-)
+try:
+    velocity = velocity.rename(
+        {
+            "eastward_velocity": "u",
+            "northward_velocity": "v",
+        }
+    )
+except ValueError:
+    # already renamed
+    pass
+# velocity = velocity.resample(time="1h").mean()
 
-# get filtering weights for 33 hour low pass filter - assumes 1 hour time step in data
-wts = sig.firwin(120, 1 / 33, window="lanczos", fs=1)
+# get filtering weights for 40 hour low pass filter - assumes 1 hour time step in data
+wts: NDArray[float64] = sig.firwin(101, 1 / 40, window="lanczos", fs=1)
+# velocity = np.sqrt(velocity["u"].values ** 2 + velocity["v"].values ** 2)
 
-# apply filter to east and north velocities
-u_filt = sig.filtfilt(wts, 1, velocity["u"].values)
-v_filt = sig.filtfilt(wts, 1, velocity["v"].values)
-velocity["u_filt"] = (["depth", "time"], u_filt)
-velocity["v_filt"] = (["depth", "time"], v_filt)
-
-# compute cross-shore and along-shore velocities based on meandering along-shelf flow as in McCabe et al. (2015)
-phi = np.arctan2(
-    np.nanmean(velocity["v_filt"], axis=0), np.nanmean(velocity["u_filt"], axis=0)
-)
-rot_array = np.array([[[np.cos(p), np.sin(p)], [-np.sin(p), np.cos(p)]] for p in phi])
-vel = np.einsum("ijk->jki", np.array([velocity["u_filt"], velocity["v_filt"]]))
-ns = np.array([vt @ r for vd in vel for vt, r in zip(vd, rot_array)]).reshape(vel.shape)
-n = ns[:, :, 0]
-s = ns[:, :, 1]
-uproj = np.array([np.sin(np.abs(phi)) * nd for nd in n])
-velocity["cs"] = (["depth", "time"], uproj)
+# print(velocity["u"].values.shape)
 
 # compute cross-shore and along-shore velocities based on principal axis of variance
-evel_filt = sig.filtfilt(wts, 1, velocity["u"].values)
-nvel_filt = sig.filtfilt(wts, 1, velocity["v"].values)
+evel_filt: NDArray[float64] = sig.filtfilt(wts, 1, velocity["u"].values, axis=1)
+nvel_filt: NDArray[float64] = sig.filtfilt(wts, 1, velocity["v"].values, axis=1)
 theta, major, minor = princax(
     np.nanmean(evel_filt, axis=1), np.nanmean(nvel_filt, axis=1)
 )
 cs_vel, as_vel = rot(evel_filt, nvel_filt, theta)
-
-velocity["cs_total"] = (["depth", "time"], cs_vel)
+velocity["u_filt"] = (["depth", "time"], evel_filt)
+velocity["v_filt"] = (["depth", "time"], nvel_filt)
+velocity["cs"] = (["depth", "time"], cs_vel)
+velocity["cs"] = velocity["cs"] - velocity["cs"].mean(
+    dim="depth", keep_attrs=True
+)  # remove depth average
 velocity["as"] = (["depth", "time"], as_vel)
 
-# remove depth average from cross-shore velocity
-velocity["cs"] = velocity["cs_total"] - velocity["cs_total"].mean(dim="depth")
+# compute cross-shore and along-shore velocities based on meandering along-shelf flow as in McCabe et al. (2015)
+phi = np.arctan2(np.nanmean(as_vel, axis=0), np.nanmean(cs_vel, axis=0))
+u_n = np.array(
+    [-u * np.sin(p) + v * np.cos(p) for u, v, p in zip(cs_vel.T, as_vel.T, phi)]
+).T
+
+# use masked array for dot product to avoid NaN issues
+u_n_m = np.ma.array(u_n, mask=np.isnan(u_n))
+u_m = np.ma.array(cs_vel, mask=np.isnan(cs_vel))
+u_p = np.ma.array(
+    [(np.ma.dot(un, u) / np.ma.dot(u, u)) * u for u, un in zip(u_m.T, u_n_m.T)]
+).T
+
+velocity["cs_proj"] = (["depth", "time"], u_p)
 
 velocity = velocity.resample(time="1D").mean()
 velocity.attrs["created_by"] = "make_datasets.py"
