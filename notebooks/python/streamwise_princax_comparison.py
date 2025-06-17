@@ -1,20 +1,30 @@
-# /// script
-# requires-python = ">=3.13"
-# dependencies = [
-#     "numpy",
-#     "scipy",
-#     "xarray[accel,io,parallel]",
-# ]
-# ///
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,python//py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.16.7
+#   kernelspec:
+#     display_name: .venv
+#     language: python
+#     name: python3
+# ---
 
+# %%
 from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
+from IPython.display import display
+from ipywidgets import widgets
 from scipy import signal as sig
 
 if TYPE_CHECKING:
@@ -31,10 +41,10 @@ DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
 VELOCITY_FILE = list(
-    Path(DATA_DIR / "NH10_Mooring_Data").glob("ADCP_NH10_1997_2024_V5*.nc")
+    Path(DATA_DIR / "NH10_Mooring_Data").glob("nh10_hourly_data_1997_2021_part*.nc")
 )
 VELOCITY_SAVE_FILE = Path(
-    "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
+    "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
 )
 
 
@@ -125,19 +135,19 @@ velocity = xr.open_mfdataset(
 )
 velocity = velocity.squeeze()
 # rename for convienience
-try:
-    velocity = velocity.rename(
-        {
-            "eastward_velocity": "u",
-            "northward_velocity": "v",
-        }
-    )
-except ValueError:
-    # already renamed
-    pass
+velocity = velocity.rename(
+    {
+        "eastward_velocity": "u",
+        "northward_velocity": "v",
+    }
+)
+# velocity = velocity.resample(time="1h").mean()
 
 # get filtering weights for 40 hour low pass filter - assumes 1 hour time step in data
 wts: NDArray[float64] = sig.firwin(101, 1 / 40, window="lanczos", fs=1)
+# velocity = np.sqrt(velocity["u"].values ** 2 + velocity["v"].values ** 2)
+
+# print(velocity["u"].values.shape)
 
 # compute cross-shore and along-shore velocities based on principal axis of variance
 evel_filt: NDArray[float64] = sig.filtfilt(wts, 1, velocity["u"].values, axis=1)
@@ -152,31 +162,53 @@ velocity["cs"] = (["depth", "time"], cs_vel)
 velocity["cs"] = velocity["cs"] - velocity["cs"].mean(
     dim="depth", keep_attrs=True
 )  # remove depth average
-velocity["as"] = (["depth", "time"], as_vel)
 
 # compute cross-shore and along-shore velocities based on meandering along-shelf flow as in McCabe et al. (2015)
 phi = np.arctan2(np.nanmean(as_vel, axis=0), np.nanmean(cs_vel, axis=0))
 u_n = np.array(
     [-u * np.sin(p) + v * np.cos(p) for u, v, p in zip(cs_vel.T, as_vel.T, phi)]
 ).T
-
-# use masked array for dot product to avoid NaN issues
-u_n_m = np.ma.array(u_n, mask=np.isnan(u_n))
-u_m = np.ma.array(cs_vel, mask=np.isnan(cs_vel))
-u_p = np.ma.array(
-    [(np.ma.dot(un, u) / np.ma.dot(u, u)) * u for u, un in zip(u_m.T, u_n_m.T)]
+u_p = np.array(
+    [(np.dot(u_n, u) / np.dot(u, u)) * u for u, u_n in zip(cs_vel.T, u_n.T)]
 ).T
+# u_p[:, phi > 0] = -u_p[:, phi > 0]  # flip sign for positive phi
+velocity["u_n"] = (["depth", "time"], u_n)
+velocity["u_p"] = (["depth", "time"], u_p)
 
+velocity["as"] = (["depth", "time"], as_vel)
+
+# remove depth average from cross-shore velocity
 velocity["cs_proj"] = (["depth", "time"], u_p)
 
-# velocity = velocity.resample(time="1D").mean()
-velocity.attrs["created_by"] = "make_datasets.py"
-velocity.attrs["created_on"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-velocity.attrs["description"] = (
-    "Velocities from Stitch In Time dataset first filtered with a 33 hour low pass filtered using a Lanczos window."
-    "Cross-shore and along-shore velocities calculated based on the principal axis of variance."
-    "Velocities resampled to daily mean."
-)
-velocity.attrs["theta"] = theta
 
-velocity.to_netcdf(DATA_DIR / VELOCITY_SAVE_FILE)
+# %%
+depth = widgets.Dropdown(
+    options=velocity["depth"].values,
+    value=velocity["depth"].values[0],
+    description="Depth (m):",
+    disabled=False,
+    style={"description_width": "initial"},
+)
+display(depth)
+
+# %%
+velocity_depth = velocity.sel(depth=depth.value)
+fig, (ax1, ax2) = plt.subplots(2, 1, sharey=True, figsize=(12, 8))
+ax1.plot(velocity.time, velocity_depth["u"], label="u")
+ax1.plot(velocity.time, velocity_depth["u_filt"], label="u_filt")
+ax1.plot(velocity.time, velocity_depth["cs"], label="cs")
+ax1.plot(velocity.time, velocity_depth["u_n"], label="u_n")
+ax1.plot(velocity.time, velocity_depth["u_p"], label="u_p")
+# plt.plot(velocity.time, cs_vel[10], label="cs_vel")
+# plt.plot(velocity.time, as_vel[10], label="cs_vel")
+ax1.set_xlim(np.datetime64(datetime(1999, 5, 1)), np.datetime64(datetime(1999, 9, 30)))
+ax1.legend()
+ax2.plot(velocity.time, velocity_depth["u"], label="u")
+ax2.plot(velocity.time, velocity_depth["u_filt"], label="u_filt")
+ax2.plot(velocity.time, velocity_depth["cs"], label="cs")
+ax2.plot(velocity.time, velocity_depth["u_n"], label="u_n")
+ax2.plot(velocity.time, velocity_depth["u_p"], label="u_p")
+# plt.plot(velocity.time, cs_vel[10], label="cs_vel")
+# plt.plot(velocity.time, as_vel[10], label="cs_vel")
+ax2.set_xlim(np.datetime64(datetime(2016, 5, 1)), np.datetime64(datetime(2016, 9, 30)))
+ax2.legend()
