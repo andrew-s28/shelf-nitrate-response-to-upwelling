@@ -179,4 +179,5 @@ figures/
 data/NH10_Mooring_Data/ADCP*
 data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise*
 data/NH10_Mooring_Data/nh10_hourly_data_1997_2021.nc
+data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5*
 presentation/*.pptx
