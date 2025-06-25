@@ -52,7 +52,7 @@ OLD_VEL_PATH = list(
 )
 NEW_VEL_PATH = DATA_DIR / "NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc"
 
-VELOCITY_VARIABLE = "cs"
+VELOCITY_VARIABLE = "cs_proj"
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
@@ -69,47 +69,6 @@ midshelf_nitrate = midshelf_nitrate.resample(time="1D").mean()
 
 # interpolate velocity depths to match 1 meter bins in midshelf nitrate
 velocity = velocity.interp(depth=midshelf_nitrate.depth)
-
-# %% [markdown]
-# ## Comparing New and Old Velocity Datasets
-
-# %%
-new_velocity = xr.open_dataset(NEW_VEL_PATH)
-old_velocity = xr.open_mfdataset(OLD_VEL_PATH)
-
-# %%
-times = old_velocity["time"]
-
-# %%
-plt.plot(
-    new_velocity.sel(time=times, method="nearest").u,
-    old_velocity.squeeze().eastward_velocity,
-    ".",
-)
-plt.gca().set_aspect("equal")
-
-# %% [markdown]
-# ## Examine Rotation on Velocity Dataset
-
-# %%
-plt.figure()
-plt.plot(
-    velocity["u_filt"].mean(dim="depth"),
-    velocity["v_filt"].mean(dim="depth"),
-    "o",
-    mec="blue",
-    mfc="blue",
-)
-# plt.figure()
-plt.gca().set_aspect("equal")
-plt.plot(
-    velocity["cs_total"].mean(dim="depth"),
-    velocity["as"].mean(dim="depth"),
-    "o",
-    mec="black",
-    mfc="black",
-)
-plt.gca().set_aspect("equal")
 
 # %% [markdown]
 # ## Computing Composites Based on Wind Stress
@@ -344,7 +303,10 @@ fig.supylabel("Depth [$\\mathsf{m}$]")
 fig.suptitle("Cross-shelf velocity")
 
 # %%
-fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(5, 3))
+slice(-1, 1, 1)
+
+# %%
+fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(6, 3))
 composite_vel_monthly_cs_slice = composite_vel_monthly_cs.sel(
     time=slice(-3, 3, 3), month=slice(4, 9)
 )
@@ -353,27 +315,37 @@ composite_vel_monthly_cs_slice = composite_vel_monthly_cs.sel(
 for i, v in enumerate(composite_vel_monthly_cs_slice["time"]):
     for j, m in enumerate(composite_vel_monthly_cs_slice.sel(time=v)["month"]):
         data = composite_vel_monthly_cs_slice.sel(time=v, month=m)
-        axs[i].plot(
-            data["mean"],
-            -data["depth"],
-            label=calendar.month_abbr[m.values],
-            c=cmap(j / 6),
-        )
+        axs[i].axvline(0, color="gray", lw=1.5)
+        if j == 0:
+            axs[i].plot(
+                data["mean"],
+                -data["depth"],
+                label=calendar.month_abbr[m.values],
+                c=cmap(j / 6),
+                ls="--",
+            )
+        else:
+            axs[i].plot(
+                data["mean"],
+                -data["depth"],
+                label=calendar.month_abbr[m.values],
+                c=cmap(j / 6),
+            )
         axs[i].minorticks_off()
         axs[i].set_ylim([-83, 2])
+        # axs[i].set_xlim([-0.04, 0.04])
 
-axs[0].annotate("-5 days\n(a)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
-axs[1].annotate("0 days\n(b)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
-axs[2].annotate("+5 days\n(c)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
+axs[0].annotate("-3 days\n(a)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10)
+axs[1].annotate("0 days\n(b)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10)
+axs[2].annotate("+3 days\n(c)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10)
 
 handles, labels = axs[0].get_legend_handles_labels()
 fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.9, 0.5))
-
 # axs[0].annotate('-5 days', xy=(0.95, 0.9), xycoords='axes fraction', fontsize=10, ha='right')
 # axs[1].annotate('0 days', xy=(0.95, 0.9), xycoords='axes fraction', fontsize=10, ha='right')
 # axs[2].annotate('+5 days', xy=(0.95, 0.9), xycoords='axes fraction', fontsize=10, ha='right')
 
-fig.supxlabel("Cross-shelf Velocity [$\\mathsf{m \\; s^{-1}}$]", y=-0.07)
+fig.supxlabel("Cross-shelf Velocity [$\\mathsf{cm \\; s^{-1}}$]", y=-0.07)
 fig.supylabel("Depth [$\\mathsf{m}$]", x=-0.02)
 plt.savefig(
     FIGURES_DIR / "manuscript/composite_cs_velocity.pdf",
@@ -422,12 +394,21 @@ composite_vel_monthly_as_slice = composite_vel_monthly_as.sel(
 for i, v in enumerate(composite_vel_monthly_as_slice["time"]):
     for j, m in enumerate(composite_vel_monthly_as_slice.sel(time=v)["month"]):
         data = composite_vel_monthly_as_slice.sel(time=v, month=m)
-        axs[i].plot(
-            data["mean"],
-            -data["depth"],
-            label=calendar.month_abbr[m.values],
-            c=cmap(j / 6),
-        )
+        if j == 0:
+            axs[i].plot(
+                data["mean"],
+                -data["depth"],
+                label=calendar.month_abbr[m.values],
+                c=cmap(j / 6),
+                ls="--",
+            )
+        else:
+            axs[i].plot(
+                data["mean"],
+                -data["depth"],
+                label=calendar.month_abbr[m.values],
+                c=cmap(j / 6),
+            )
         axs[i].minorticks_off()
         axs[i].set_ylim([-83, 2])
 
@@ -604,9 +585,9 @@ fig.supylabel("Depth [$\\mathsf{m}$]")
 fig.suptitle("Cross-shelf Nitrate Flux")
 
 # %%
-fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(5, 3))
+fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(6, 3))
 composite_midshelf_nitrate_flux_monthly_slice = (
-    composite_midshelf_nitrate_flux_monthly.sel(time=slice(-5, 5, 5), month=slice(4, 9))
+    composite_midshelf_nitrate_flux_monthly.sel(time=slice(-3, 3, 3), month=slice(4, 9))
 )
 
 for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
@@ -614,19 +595,29 @@ for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
         composite_midshelf_nitrate_flux_monthly_slice.sel(time=v)["month"]
     ):
         data = composite_midshelf_nitrate_flux_monthly_slice.sel(time=v, month=m)
-        axs[i].plot(
-            data["mean"],
-            -data["depth"],
-            label=calendar.month_abbr[m.values],
-            c=cmap(j / 6),
-        )
+        axs[i].axvline(0, color="gray", lw=1.5)
+        if j == 0:
+            axs[i].plot(
+                data["mean"],
+                -data["depth"],
+                label=calendar.month_abbr[m.values],
+                c=cmap(j / 6),
+                ls="--",
+            )
+        else:
+            axs[i].plot(
+                data["mean"],
+                -data["depth"],
+                label=calendar.month_abbr[m.values],
+                c=cmap(j / 6),
+            )
         axs[i].minorticks_off()
-        axs[i].set_xlim([-1, 1.5])
+        # axs[i].set_xlim([-0.6, 0.6])
         axs[i].set_ylim([-83, 2])
 
 axs[0].annotate(
-    "-5 days\n(a)",
-    xy=(0.9, 0.95),
+    "-3 days\n(a)",
+    xy=(0.95, 0.95),
     xycoords="axes fraction",
     fontsize=10,
     ha="right",
@@ -634,15 +625,15 @@ axs[0].annotate(
 )
 axs[1].annotate(
     "0 days\n(b)",
-    xy=(0.9, 0.95),
+    xy=(0.95, 0.95),
     xycoords="axes fraction",
     fontsize=10,
     ha="right",
     va="top",
 )
 axs[2].annotate(
-    "+5 days\n(c)",
-    xy=(0.9, 0.95),
+    "+3 days\n(c)",
+    xy=(0.95, 0.95),
     xycoords="axes fraction",
     fontsize=10,
     ha="right",
@@ -700,7 +691,7 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
 
         # 20 m to 40 m flux
         data = composite_midshelf_nitrate_flux_monthly.sel(
-            month=m, time=t, depth=slice(20, 60)
+            month=m, time=t, depth=slice(20, 40)
         )
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
@@ -724,28 +715,53 @@ for i, m in enumerate(
     composite_midshelf_nitrate_flux_monthly.sel(month=slice(4, 9))["month"]
 ):
     # data = composite_midshelf_nitrate_flux_monthly.sel(month=m)
-    axs[0].plot(
-        days, flux_60_80[m - 1], color=cmap(i / 6), label=calendar.month_abbr[m.values]
-    )
-    axs[1].plot(
-        days, flux_20_60[m - 1], color=cmap(i / 6), label=calendar.month_abbr[m.values]
-    )
+    if i == 0:
+        axs[0].plot(
+            days,
+            flux_60_80[m - 1],
+            color=cmap(i / 6),
+            label=calendar.month_abbr[m.values],
+            ls="--",
+        )
+        axs[1].plot(
+            days,
+            flux_20_60[m - 1],
+            color=cmap(i / 6),
+            label=calendar.month_abbr[m.values],
+            ls="--",
+        )
+    else:
+        axs[0].plot(
+            days,
+            flux_60_80[m - 1],
+            color=cmap(i / 6),
+            label=calendar.month_abbr[m.values],
+        )
+        axs[1].plot(
+            days,
+            flux_20_60[m - 1],
+            color=cmap(i / 6),
+            label=calendar.month_abbr[m.values],
+        )
 
 axs[0].minorticks_off()
 axs[1].minorticks_off()
 axs[0].axhline(0, color="black")
 axs[1].axhline(0, color="black")
-axs[1].legend(loc="upper center", ncol=3)
+axs[1].legend(loc="upper center", ncol=3, framealpha=1)
 fig.supxlabel("Days from Beginning of Upwelling Event", y=-0.07)
 fig.supylabel("Nitrate Flux [$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]", x=-0.02)
 axs[0].annotate("(a)", xy=(0.88, 0.05), xycoords="axes fraction", fontsize=10)
 axs[1].annotate("(b)", xy=(0.88, 0.05), xycoords="axes fraction", fontsize=10)
 
 # reset cmap
-cmap = cmo.tools.crop_by_percent(cmo.balance, 30, which="both")  # type: ignore
-cmap = cmap.from_list("cmap", cmap(np.linspace(0, 1, 11)), 11)
+# cmap = cmo.tools.crop_by_percent(cmo.balance, 30, which="both")  # type: ignore
+# cmap = cmap.from_list("cmap", cmap(np.linspace(0, 1, 11)), 11)
 plt.savefig(
     FIGURES_DIR / "manuscript/layer_cs_nflux.pdf",
     format="pdf",
     bbox_inches="tight",
 )
+# plt.axvline(1)
+
+# %%
