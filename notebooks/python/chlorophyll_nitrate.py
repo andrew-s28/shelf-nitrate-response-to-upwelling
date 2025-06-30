@@ -222,3 +222,43 @@ for axis in ["top", "bottom", "left", "right"]:
 #     os.path.join(notebook_dir, "../manuscript/chlorophyll-nitrate-2021.pdf"),
 #     format="pdf",
 # )
+
+# %%
+estimated_chloro = (optaa_al.estimated_chlorophyll + flort_al.estimated_chlorophyll) / 2
+
+# %%
+estimated_chloro = estimated_chloro.resample(time="1D").mean()
+
+# %%
+e_c, i_n, c_y = xr.align(
+    estimated_chloro, inner_nitrate.nitrate.mean(dim="depth"), wind["coare_y"]
+)
+
+# %%
+e_c, c_y = xr.align(estimated_chloro, wind["w5d"])
+
+# %%
+plt.scatter(
+    xr.align(wind["w5d"], inner_nitrate.nitrate.mean(dim="depth"))[0],
+    xr.align(wind["w5d"], inner_nitrate.nitrate.mean(dim="depth"))[1],
+)
+plt.scatter(
+    xr.align(wind["coare_y"], estimated_chloro)[0],
+    xr.align(wind["coare_y"], estimated_chloro)[1],
+)
+
+# %%
+plt.hist2d(
+    e_c.values,
+    i_n.values,
+    bins=100,
+    # range=[[0, 25], [0, 40]],
+    # cmap="viridis",
+    # cmin=1,
+    # cmax=1000,
+)
+
+# %%
+plt.plot()
+
+# %%
