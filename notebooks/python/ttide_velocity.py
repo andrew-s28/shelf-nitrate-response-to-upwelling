@@ -16,19 +16,20 @@
 # %%
 import os
 from contextlib import redirect_stdout
-from datetime import datetime, timezone
 from pathlib import Path
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.text as mtext
 import numpy as np
+import utide as ut
 import xarray as xr
 from IPython.display import HTML
 from matplotlib.figure import Figure
 from numpy.typing import NDArray
+from tqdm import tqdm
 
-import ttide as tt
+# import ttide as tt
 
 HTML("""
     <style>
@@ -56,74 +57,75 @@ OOI_TIME = slice(np.datetime64("2015-04-01"), None)
 
 
 # %%
-def fit_ttide(u: xr.DataArray, v: xr.DataArray) -> dict:
+def fit_utide(u: xr.DataArray, v: xr.DataArray) -> dict:
     """Fit a T-Tide model to the given u and v components."""
-    # u and v should have the same time dimension
-    seconds_since_epoch = (u.time[0].values - np.datetime64(0, "s")) / np.timedelta64(
-        1, "s"
-    )
-    stime = datetime.fromtimestamp(seconds_since_epoch, tz=timezone.utc)
-
-    # don't need to print the output of t_tide, so redirect stdout to devnull
+    # don't need to print the output of utide, so redirect stdout to devnull
     with open(os.devnull, "w") as devnull:
         with redirect_stdout(devnull):
-            # just save the dict output of t_tide
-            out = tt.t_tide(
-                u[:].values + v[:].values * 1j,
+            # just save the dict output of utide
+            coef = ut.solve(
+                u["time"],
+                u,
+                v,
                 lat=44.64,
-                dt=1,
-                stime=stime,
+                method="ols",
+                conf_int="linear",
             )
 
-    # squeeze the output arrays to remove any singleton dimensions
-    out = {k: v.squeeze() for k, v in out.items() if isinstance(v, np.ndarray)}
-
-    # out is a dict with keys 'nobs', 'ngood', 'dt', 'xin', 'xout', 'xres', 'xingd', 'xoutgd', 'xresgd', 'isComplex', 'ray', 'nodcor', 'z0', 'dz0', 'fu', 'nameu', 'tidecon', 'snr', 'synth', 'lat', 'ltype', 'stime'
-    return out
+    return coef
 
 
-def fit_ttide_from_ds(
+def fit_utide_from_ds(
     ds: xr.Dataset,
 ) -> xr.Dataset:
-    ds_list = []
-    for depth in ds["depth"]:
+    ds_list: list[xr.Dataset] = []
+    for depth in tqdm(ds["depth"], desc="Fitting UTide"):
+        # skip depths where either u or v is all NaN
         if np.all(np.isnan(ds["u"].sel(depth=depth))) or np.all(
             np.isnan(ds["v"].sel(depth=depth))
         ):
             continue
-        out = fit_ttide(
+
+        # run utide to fit the tidal constituents for a given depth
+        out = fit_utide(
             ds["u"].sel(depth=depth),
             ds["v"].sel(depth=depth),
         )
-        out["nameu"] = [name.astype(str).strip() for name in out["nameu"]]
+
+        # convert the output to a dataset
+        out["name"] = [name.strip() for name in out["name"]]
         out_ds = xr.Dataset(
             {
-                "uin": (["time"], out["xin"].real),
-                "vin": (["time"], out["xin"].imag),
-                "uout": (["time"], out["xout"].real),
-                "vout": (["time"], out["xout"].imag),
-                "ures": (["time"], out["xres"].real),
-                "vres": (["time"], out["xres"].imag),
-                "fu": (["constituent"], out["fu"]),
-                "snr": (["constituent"], out["snr"]),
-                "major": (["constituent"], out["tidecon"][:, 0]),
-                "emajor": (["constituent"], out["tidecon"][:, 1]),
-                "minor": (["constituent"], out["tidecon"][:, 2]),
-                "eminor": (["constituent"], out["tidecon"][:, 3]),
-                "inc": (["constituent"], out["tidecon"][:, 4]),
-                "einc": (["constituent"], out["tidecon"][:, 5]),
-                "phase": (["constituent"], out["tidecon"][:, 6]),
-                "ephase": (["constituent"], out["tidecon"][:, 7]),
+                "freq": (["constituent"], out["aux"]["frq"]),
+                "snr": (["constituent"], out["diagn"]["SNR"]),
+                "pe": (["constituent"], out["diagn"]["PE"]),
+                "major": (["constituent"], out["Lsmaj"]),
+                "major_ci": (["constituent"], out["Lsmaj_ci"]),
+                "minor": (["constituent"], out["Lsmin"]),
+                "minor_ci": (["constituent"], out["Lsmin_ci"]),
+                "inclination": (["constituent"], out["theta"]),
+                "inclination_ci": (["constituent"], out["theta_ci"]),
+                "phase": (["constituent"], out["Lsmaj"]),
+                "phase_ci": (["constituent"], out["Lsmaj_ci"]),
             },
             coords={
                 "time": ds.time,
-                "constituent": out["nameu"],
+                "constituent": out["name"],
             },
         )
+        out_ds["u_mean"] = ([], out["umean"])
+        out_ds["v_mean"] = ([], out["vmean"])
+        out_ds["u_slope"] = ([], out["uslope"])
+        out_ds["v_slope"] = ([], out["vslope"])
         out_ds = out_ds.expand_dims({"depth": [depth.values.astype(int)]}, axis=0)
         ds_list.append(out_ds)
 
+    # combine the list of datasets along the depth dimension
     tide_out = xr.concat(ds_list, dim="depth")
+    tide_out.attrs = {
+        "description": "tidal constituents from UTide https://www.po.gso.uri.edu/~codiga/utide/utide.htm",
+    }
+
     return tide_out
 
 
@@ -145,29 +147,29 @@ def plot_tidal_constituents(
     axs[0].plot(tide_ds["major"], -tide_ds["depth"], label=constituent, **kwargs)
     axs[0].fill_betweenx(
         -tide_ds["depth"],
-        tide_ds["major"] - tide_ds["emajor"],
-        tide_ds["major"] + tide_ds["emajor"],
+        tide_ds["major"] - tide_ds["major_ci"],
+        tide_ds["major"] + tide_ds["major_ci"],
         alpha=0.3,
     )
     axs[1].plot(tide_ds["minor"], -tide_ds["depth"], label=constituent, **kwargs)
     axs[1].fill_betweenx(
         -tide_ds["depth"],
-        tide_ds["minor"] - tide_ds["eminor"],
-        tide_ds["minor"] + tide_ds["eminor"],
+        tide_ds["minor"] - tide_ds["minor_ci"],
+        tide_ds["minor"] + tide_ds["minor_ci"],
         alpha=0.3,
     )
-    axs[2].plot(tide_ds["inc"], -tide_ds["depth"], label=constituent, **kwargs)
+    axs[2].plot(tide_ds["inclination"], -tide_ds["depth"], label=constituent, **kwargs)
     axs[2].fill_betweenx(
         -tide_ds["depth"],
-        tide_ds["inc"] - tide_ds["einc"],
-        tide_ds["inc"] + tide_ds["einc"],
+        tide_ds["inclination"] - tide_ds["inclination_ci"],
+        tide_ds["inclination"] + tide_ds["inclination_ci"],
         alpha=0.3,
     )
     axs[3].plot(tide_ds["phase"], -tide_ds["depth"], label=constituent, **kwargs)
     axs[3].fill_betweenx(
         -tide_ds["depth"],
-        tide_ds["phase"] - tide_ds["ephase"],
-        tide_ds["phase"] + tide_ds["ephase"],
+        tide_ds["phase"] - tide_ds["phase_ci"],
+        tide_ds["phase"] + tide_ds["phase_ci"],
         alpha=0.3,
     )
     axs[0].set_xlabel("Major Axis [$\\mathsf{cm \\; s^{-1}}$]")
@@ -192,14 +194,19 @@ velocity_v1_ooi = velocity_v1.sel(time=OOI_TIME)
 velocity_v5_ooi = velocity_v5.sel(time=OOI_TIME)
 
 # %%
-tide_v1_nanoos = fit_ttide_from_ds(velocity_v1_nanoos)
-tide_v5_nanoos = fit_ttide_from_ds(velocity_v5_nanoos)
-tide_v1_ooi = fit_ttide_from_ds(velocity_v1_ooi)
-tide_v5_ooi = fit_ttide_from_ds(velocity_v5_ooi)
+tide_v1_nanoos = fit_utide_from_ds(velocity_v1_nanoos)
+tide_v5_nanoos = fit_utide_from_ds(velocity_v5_nanoos)
+tide_v1_ooi = fit_utide_from_ds(velocity_v1_ooi)
+tide_v5_ooi = fit_utide_from_ds(velocity_v5_ooi)
 
 
 # %%
 class LegendTitle:
+    """Used to create subtitles in MatPlotLib legends.
+
+    Use with plt.legend(handles, labels, handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)})
+    """
+
     def __init__(self, text_props=None, width=None) -> None:
         self.text_props = text_props or {}
         self.width = width or None
