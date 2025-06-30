@@ -4,6 +4,7 @@ import copy
 from .t_astron import t_astron
 import os.path as path
 from scipy.io.netcdf import netcdf_file as nopen
+import warnings
 
 _base_dir = path.join(path.dirname(__file__), 'data')
 has_const = path.exists(path.join(_base_dir, 't_constituents_const.nc'))
@@ -78,7 +79,12 @@ def t_getconsts(ctime):
         ii = np.isfinite(const['ishallow'])
         const['freq'][~ii] = np.dot(const['doodson'][~ii, :], ader) / 24
 
-        shallow_m1 = const['ishallow'].astype(int) -1
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning,
+                                    message="invalid value encountered in cast")
+            # nan values in ishallow get cast to minimum integer value, i.e., min_int = -sys.maxsize - 1 = -9223372036854775808
+            # the code is apparently fine with this, so just ignore the warning
+            shallow_m1 = const['ishallow'].astype(int) -1
         iname_m1 = shallow['iname'].astype(int) -1
         range_cache = {n:np.arange(n) for n in range(const['nshallow'].max()+1)}
         for k in np.flatnonzero(ii):

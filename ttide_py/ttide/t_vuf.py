@@ -3,6 +3,7 @@ import numpy as np
 import scipy as sp
 from .t_astron import t_astron
 from .t_getconsts import t_getconsts
+import warnings
 
 
 def t_vuf(ltype, ctime, ju, lat=None):
@@ -98,7 +99,12 @@ def t_vuf(ltype, ctime, ju, lat=None):
 
             # Compute amplitude and phase corrections
             # for shallow water constituents.
-            shallow_m1  = const['ishallow'].astype(int) -1
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning,
+                                        message="invalid value encountered in cast")
+                # nan values in ishallow get cast to minimum integer value, i.e., min_int = -sys.maxsize - 1 = -9223372036854775808
+                # the code is apparently fine with this, so just ignore the warning
+                shallow_m1  = const['ishallow'].astype(int) -1
             iname_m1    = shallow['iname'].astype(int) -1
             coefs       = shallow['coef'].astype(np.float64)
             range_cache = {n:np.arange(n) for n in range(const['nshallow'].max()+1)}
