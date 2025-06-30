@@ -19,11 +19,12 @@ from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import matplotlib.text as mtext
 import numpy as np
 import xarray as xr
-from IPython.display import HTML, display
-from ipywidgets import widgets
+from IPython.display import HTML
 from matplotlib.figure import Figure
 from numpy.typing import NDArray
 
@@ -81,6 +82,106 @@ def fit_ttide(u: xr.DataArray, v: xr.DataArray) -> dict:
     return out
 
 
+def fit_ttide_from_ds(
+    ds: xr.Dataset,
+) -> xr.Dataset:
+    ds_list = []
+    for depth in ds["depth"]:
+        if np.all(np.isnan(ds["u"].sel(depth=depth))) or np.all(
+            np.isnan(ds["v"].sel(depth=depth))
+        ):
+            continue
+        out = fit_ttide(
+            ds["u"].sel(depth=depth),
+            ds["v"].sel(depth=depth),
+        )
+        out["nameu"] = [name.astype(str).strip() for name in out["nameu"]]
+        out_ds = xr.Dataset(
+            {
+                "uin": (["time"], out["xin"].real),
+                "vin": (["time"], out["xin"].imag),
+                "uout": (["time"], out["xout"].real),
+                "vout": (["time"], out["xout"].imag),
+                "ures": (["time"], out["xres"].real),
+                "vres": (["time"], out["xres"].imag),
+                "fu": (["constituent"], out["fu"]),
+                "snr": (["constituent"], out["snr"]),
+                "major": (["constituent"], out["tidecon"][:, 0]),
+                "emajor": (["constituent"], out["tidecon"][:, 1]),
+                "minor": (["constituent"], out["tidecon"][:, 2]),
+                "eminor": (["constituent"], out["tidecon"][:, 3]),
+                "inc": (["constituent"], out["tidecon"][:, 4]),
+                "einc": (["constituent"], out["tidecon"][:, 5]),
+                "phase": (["constituent"], out["tidecon"][:, 6]),
+                "ephase": (["constituent"], out["tidecon"][:, 7]),
+            },
+            coords={
+                "time": ds.time,
+                "constituent": out["nameu"],
+            },
+        )
+        out_ds = out_ds.expand_dims({"depth": [depth.values.astype(int)]}, axis=0)
+        ds_list.append(out_ds)
+
+    tide_out = xr.concat(ds_list, dim="depth")
+    return tide_out
+
+
+def plot_tidal_constituents(
+    tide_ds: xr.Dataset,
+    constituent: str,
+    fig: Figure | None = None,
+    snr: bool = True,
+    **kwargs,
+) -> tuple[Figure, NDArray]:
+    """Plot the tidal constituents from a T-Tide output dataset."""
+    if fig is None:
+        if snr:
+            fig, axs = plt.subplots(1, 5, figsize=(12, 6))
+        else:
+            fig, axs = plt.subplots(1, 4, figsize=(10, 6))
+    else:
+        axs = fig.get_axes()
+    axs[0].plot(tide_ds["major"], -tide_ds["depth"], label=constituent, **kwargs)
+    axs[0].fill_betweenx(
+        -tide_ds["depth"],
+        tide_ds["major"] - tide_ds["emajor"],
+        tide_ds["major"] + tide_ds["emajor"],
+        alpha=0.3,
+    )
+    axs[1].plot(tide_ds["minor"], -tide_ds["depth"], label=constituent, **kwargs)
+    axs[1].fill_betweenx(
+        -tide_ds["depth"],
+        tide_ds["minor"] - tide_ds["eminor"],
+        tide_ds["minor"] + tide_ds["eminor"],
+        alpha=0.3,
+    )
+    axs[2].plot(tide_ds["inc"], -tide_ds["depth"], label=constituent, **kwargs)
+    axs[2].fill_betweenx(
+        -tide_ds["depth"],
+        tide_ds["inc"] - tide_ds["einc"],
+        tide_ds["inc"] + tide_ds["einc"],
+        alpha=0.3,
+    )
+    axs[3].plot(tide_ds["phase"], -tide_ds["depth"], label=constituent, **kwargs)
+    axs[3].fill_betweenx(
+        -tide_ds["depth"],
+        tide_ds["phase"] - tide_ds["ephase"],
+        tide_ds["phase"] + tide_ds["ephase"],
+        alpha=0.3,
+    )
+    axs[0].set_xlabel("Major Axis [$\\mathsf{cm \\; s^{-1}}$]")
+    axs[1].set_xlabel("Minor Axis [$\\mathsf{cm \\; s^{-1}}$]")
+    axs[2].set_xlabel("Inclination [degrees]")
+    axs[3].set_xlabel("Phase [degrees]")
+    if snr:
+        axs[4].plot(tide_ds["snr"], -tide_ds["depth"], label=constituent, **kwargs)
+        axs[4].set_xscale("log")
+        axs[4].axvline(2, color="k", linestyle="--")
+        axs[4].set_xlabel("Signal-to-Noise Ratio")
+    return fig, axs
+
+
 # %%
 velocity_v1 = xr.open_dataset(VEL_PATH_V1).resample(time="1h").mean()
 velocity_v5 = xr.open_dataset(VEL_PATH_V5).resample(time="1h").mean()
@@ -91,125 +192,166 @@ velocity_v1_ooi = velocity_v1.sel(time=OOI_TIME)
 velocity_v5_ooi = velocity_v5.sel(time=OOI_TIME)
 
 # %%
-ds_list = []
-for depth in velocity_v1_nanoos["depth"]:
-    out = fit_ttide(
-        velocity_v1_nanoos["u"].sel(depth=depth),
-        velocity_v1_nanoos["v"].sel(depth=depth),
-    )
-    out["nameu"] = [name.astype(str).strip() for name in out["nameu"]]
-    out_ds = xr.Dataset(
-        {
-            "uin": (["time"], out["xin"].real),
-            "vin": (["time"], out["xin"].imag),
-            "uout": (["time"], out["xout"].real),
-            "vout": (["time"], out["xout"].imag),
-            "ures": (["time"], out["xres"].real),
-            "vres": (["time"], out["xres"].imag),
-            "fu": (["constituent"], out["fu"]),
-            "snr": (["constituent"], out["snr"]),
-            "major": (["constituent"], out["tidecon"][:, 0]),
-            "emajor": (["constituent"], out["tidecon"][:, 1]),
-            "minor": (["constituent"], out["tidecon"][:, 2]),
-            "eminor": (["constituent"], out["tidecon"][:, 3]),
-            "inc": (["constituent"], out["tidecon"][:, 4]),
-            "einc": (["constituent"], out["tidecon"][:, 5]),
-            "phase": (["constituent"], out["tidecon"][:, 6]),
-            "ephase": (["constituent"], out["tidecon"][:, 7]),
-        },
-        coords={
-            "time": velocity_v1_nanoos.time,
-            "constituent": out["nameu"],
-        },
-    )
-    out_ds = out_ds.expand_dims({"depth": [depth.values]}, axis=0)
-    ds_list.append(out_ds)
-
-tide_out = xr.concat(ds_list, dim="depth")
+tide_v1_nanoos = fit_ttide_from_ds(velocity_v1_nanoos)
+tide_v5_nanoos = fit_ttide_from_ds(velocity_v5_nanoos)
+tide_v1_ooi = fit_ttide_from_ds(velocity_v1_ooi)
+tide_v5_ooi = fit_ttide_from_ds(velocity_v5_ooi)
 
 
 # %%
-def plot_tidal_constituents(
-    tide_ds: xr.Dataset, constituent: str, fig: Figure | None = None
-) -> tuple[Figure, NDArray]:
-    """Plot the tidal constituents from a T-Tide output dataset."""
-    if fig is None:
-        fig, axs = plt.subplots(1, 5, figsize=(12, 6))
-    else:
-        axs = fig.get_axes()
-    axs[0].plot(tide_ds["major"], -tide_ds["depth"], label=constituent)
-    axs[0].fill_betweenx(
-        -tide_ds["depth"],
-        tide_ds["major"] - tide_ds["emajor"],
-        tide_ds["major"] + tide_ds["emajor"],
-        alpha=0.3,
-    )
-    axs[1].plot(tide_ds["minor"], -tide_ds["depth"], label=constituent)
-    axs[1].fill_betweenx(
-        -tide_ds["depth"],
-        tide_ds["minor"] - tide_ds["eminor"],
-        tide_ds["minor"] + tide_ds["eminor"],
-        alpha=0.3,
-    )
-    axs[2].plot(tide_ds["inc"], -tide_ds["depth"], label=constituent)
-    axs[2].fill_betweenx(
-        -tide_ds["depth"],
-        tide_ds["inc"] - tide_ds["einc"],
-        tide_ds["inc"] + tide_ds["einc"],
-        alpha=0.3,
-    )
-    axs[3].plot(tide_ds["phase"], -tide_ds["depth"], label=constituent)
-    axs[3].fill_betweenx(
-        -tide_ds["depth"],
-        tide_ds["phase"] - tide_ds["ephase"],
-        tide_ds["phase"] + tide_ds["ephase"],
-        alpha=0.3,
-    )
-    axs[4].plot(tide_ds["snr"], -tide_ds["depth"], label=constituent)
-    axs[4].set_xscale("log")
-    axs[4].axvline(2, color="k", linestyle="--")
-    axs[0].set_xlabel("Major Axis [$\\mathsf{cm \\; s^{-1}}$]")
-    axs[1].set_xlabel("Minor Axis [$\\mathsf{cm \\; s^{-1}}$]")
-    axs[2].set_xlabel("Inclination [degrees]")
-    axs[3].set_xlabel("Phase [degrees]")
-    axs[4].set_xlabel("Signal-to-Noise Ratio")
-    # handles, labels = axs[0].get_legend_handles_labels()
-    # # print(handles)
-    # fig.legend(handles, labels, loc="center", bbox_to_anchor=(1, 0.5))
-    return fig, axs
+class LegendTitle:
+    def __init__(self, text_props=None, width=None) -> None:
+        self.text_props = text_props or {}
+        self.width = width or None
+        super(LegendTitle, self).__init__()
+
+    def legend_artist(self, legend, orig_handle, fontsize, handlebox):
+        x0, y0 = handlebox.xdescent, handlebox.ydescent
+        title = mtext.Text(
+            x0,
+            y0,
+            f"\\underline{{\\textbf{{{orig_handle}}}}}",
+            usetex=True,
+            **self.text_props,
+        )
+        handlebox.add_artist(title)
+        if self.width is not None:
+            handlebox.width = self.width
+        return title
 
 
 # %%
 fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
-
-for const in tide_out["constituent"].values:
-    tide = tide_out.sel(constituent=const)
-    if tide["snr"].min() < 2:
-        continue
+constituents = ["K1", "O1", "M2"]
+for const in constituents:
+    tide = tide_v1_nanoos.sel(constituent=const)
     fig, axs = plot_tidal_constituents(tide, const, fig)
-handles, labels = axs[0].get_legend_handles_labels()
-fig.legend(handles, labels, loc="center", bbox_to_anchor=(0.95, 0.5))
-fig.suptitle("Tidal Constituents with SNR > 2", fontsize=12, y=0.95)
 
-# %%
-constituents = widgets.SelectMultiple(
-    options=tide_out.where(tide_out["snr"].min(dim="depth") > 2, drop=True)[
-        "constituent"
-    ].values,
-    description="Constituents",
-    disabled=False,
-    rows=10,
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = tide_v5_nanoos.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
+handles, labels = axs[0].get_legend_handles_labels()
+proxy = mpatches.FancyBboxPatch(
+    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
 )
-display(constituents)
+handles.append("NANOOS v1")
+labels.append("")
+handles.append("NANOOS v5")
+labels.append("")
+order = [6, 0, 1, 2, 7, 3, 4, 5]
+handles = [handles[i] for i in order]
+labels = [labels[i] for i in order]
+leg = fig.legend(
+    handles,
+    labels,
+    loc="center",
+    bbox_to_anchor=(0.95, 0.5),
+    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+)
+fig.suptitle("NANOOS v1 vs. v5 Selected Tidal Constituents", fontsize=12, y=0.95)
+plt.savefig(
+    FIGURES_DIR / "ttide_velocity_nanoos_v1_v5.png", dpi=300, bbox_inches="tight"
+)
 
 # %%
 fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
-
-for const in constituents.value:
-    tide = tide_out.sel(constituent=const)
+constituents = ["K1", "O1", "M2"]
+for const in constituents:
+    tide = tide_v1_ooi.sel(constituent=const)
     fig, axs = plot_tidal_constituents(tide, const, fig)
+
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = tide_v5_ooi.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
 handles, labels = axs[0].get_legend_handles_labels()
-fig.legend(handles, labels, loc="center", bbox_to_anchor=(0.95, 0.5))
-fig.suptitle("Selected Tidal Constituents", fontsize=12, y=0.95)
+proxy = mpatches.FancyBboxPatch(
+    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+)
+handles.append("OOI v1")
+labels.append("")
+handles.append("OOI v5")
+labels.append("")
+order = [6, 0, 1, 2, 7, 3, 4, 5]
+handles = [handles[i] for i in order]
+labels = [labels[i] for i in order]
+leg = fig.legend(
+    handles,
+    labels,
+    loc="center",
+    bbox_to_anchor=(0.95, 0.5),
+    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+)
+fig.suptitle("OOI v1 vs. v5 Selected Tidal Constituents", fontsize=12, y=0.95)
+plt.savefig(FIGURES_DIR / "ttide_velocity_ooi_v1_v5.png", dpi=300, bbox_inches="tight")
+
+# %%
+fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
+constituents = ["K1", "O1", "M2"]
+for const in constituents:
+    tide = tide_v1_nanoos.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig)
+
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = tide_v1_ooi.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
+handles, labels = axs[0].get_legend_handles_labels()
+proxy = mpatches.FancyBboxPatch(
+    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+)
+handles.append("NANOOS v1")
+labels.append("")
+handles.append("OOI v1")
+labels.append("")
+order = [6, 0, 1, 2, 7, 3, 4, 5]
+handles = [handles[i] for i in order]
+labels = [labels[i] for i in order]
+leg = fig.legend(
+    handles,
+    labels,
+    loc="center",
+    bbox_to_anchor=(0.95, 0.5),
+    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+)
+fig.suptitle("OOI vs. NANOOS v1 Selected Tidal Constituents", fontsize=12, y=0.95)
+plt.savefig(
+    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v1.png", dpi=300, bbox_inches="tight"
+)
+
+# %%
+fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
+constituents = ["K1", "O1", "M2"]
+for const in constituents:
+    tide = tide_v5_nanoos.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig)
+
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = tide_v5_ooi.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
+handles, labels = axs[0].get_legend_handles_labels()
+proxy = mpatches.FancyBboxPatch(
+    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+)
+handles.append("NANOOS v5")
+labels.append("")
+handles.append("OOI v5")
+labels.append("")
+order = [6, 0, 1, 2, 7, 3, 4, 5]
+handles = [handles[i] for i in order]
+labels = [labels[i] for i in order]
+leg = fig.legend(
+    handles,
+    labels,
+    loc="center",
+    bbox_to_anchor=(0.95, 0.5),
+    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+)
+fig.suptitle("OOI vs. NANOOS v5 Selected Tidal Constituents", fontsize=12, y=0.95)
+plt.savefig(
+    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v5.png", dpi=300, bbox_inches="tight"
+)
 
 # %%
