@@ -22,6 +22,7 @@ import numpy as np
 import statsmodels.api as sm
 import xarray as xr
 from numpy.typing import NDArray
+from scipy.ndimage import median_filter
 from scipy.stats import distributions
 
 # %%
@@ -41,14 +42,82 @@ VEL_PATH = (
     DATA_DIR
     / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
 )
+GEBCO_PATH = list(Path(DATA_DIR / "GEBCO/").glob("*.nc"))
 
-VELOCITY_VARIABLE = "cs"  # cs for cross-shelf with depth mean subtraced; cs_proj for cross-shelf projected by McCabe et al 2015
+VELOCITY_VARIABLE = "cs_proj"  # cs for cross-shelf with depth mean subtraced; cs_proj for cross-shelf projected by McCabe et al 2015
+
+
+# %%
+def calculate_budget_volume(
+    da: xr.DataArray,
+    d_min: int | float,
+    d_max: int | float,
+    d_step: int | float,
+    lon_min: int | float,
+    lon_max: int | float,
+    lat: int | float,
+) -> xr.DataArray:
+    bathymetry = (
+        xr.open_mfdataset(GEBCO_PATH)
+        .interp(lat=lat)
+        .interp(dict(lon=np.linspace(lon_min, lon_max, int(1e6))))
+    )
+    coast = bathymetry.isel(dict(lon=np.argmin(np.abs(bathymetry.elevation.values))))
+
+    bathymetry["distance_from_shore"] = xr.apply_ufunc(
+        lambda x: haversine(
+            bathymetry.lon[0].values, coast.lat.values, x, coast.lat.values
+        )
+        - haversine(
+            bathymetry.lon[0].values,
+            coast.lat.values,
+            coast.lon.values,
+            coast.lat.values,
+        ),
+        bathymetry.lon,
+    )
+    bathymetry = bathymetry.swap_dims({"lon": "distance_from_shore"}).load()
+    elevation = bathymetry.interp(
+        distance_from_shore=np.arange(d_min, d_max, d_step),
+        method="linear",
+    )["elevation"]  # convert to m
+    # elevation_0 = elevation[0]
+    out = elevation * d_step * da
+    out = out.sum(dim="distance_from_shore")
+    return out
+
+
+def haversine(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points
+    on the earth (specified in decimal degrees)
+
+    Args:
+        lon1 (scalar): longitude of first point
+        lat1 (scalar): latitude of first point
+        lon2 (scalar): longitude of second point
+        lat2 (scalar): latitude of second point
+
+    Returns:
+        scalar: distance in km between (lon1, lat1) and (lon2, lat2)
+    """
+    # convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+    # haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    c = 2 * np.arcsin(np.sqrt(a))
+    # Radius of earth in kilometers is 6371
+    km = 6371 * c
+    return km
+
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
-velocity = xr.open_dataset(VEL_PATH)
+velocity = xr.open_dataset(VEL_PATH).resample(time="1D").mean()
 
 # bit of a lazy way to use the cs_proj variable, since the notebook is set up for cs
 if VELOCITY_VARIABLE == "cs_proj":
@@ -76,31 +145,122 @@ midshelf_nitrate_monthly["ci"] = (
     midshelf_nitrate_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
 )
 
+inner_nitrate["dndt_volume_integrated"] = calculate_budget_volume(
+    inner_nitrate.dndt,
+    d_min=-7,
+    d_max=0,
+    d_step=0.1,
+    lon_min=-130,
+    lon_max=-120,
+    lat=44.66,
+)
+midshelf_nitrate["dndt_volume_integrated"] = calculate_budget_volume(
+    midshelf_nitrate.dndt,
+    d_min=-18.5,
+    d_max=-7,
+    d_step=0.1,
+    lon_min=-130,
+    lon_max=-120,
+    lat=44.66,
+)
+inner_nitrate["dndt_volume_integrated_filtered"] = (
+    ["time"],
+    median_filter(inner_nitrate["dndt_volume_integrated"].values, size=8),
+)
+midshelf_nitrate["dndt_volume_integrated_filtered"] = (
+    ["time"],
+    median_filter(midshelf_nitrate["dndt_volume_integrated"].values, size=8),
+)
+
+# %%
+# bathymetry = xr.open_mfdataset(GEBCO_PATH).interp(lat=44.66).interp(dict(lon=np.linspace(-130, -123, int(1e6))))
+# coast = bathymetry.isel(dict(lon=np.argmin(np.abs(bathymetry.elevation.values))))
+
+# bathymetry["distance_from_shore"] = xr.apply_ufunc(
+#     lambda x: haversine(
+#         bathymetry.lon[0].values, coast.lat.values, x, coast.lat.values
+#     ) - haversine(
+#         bathymetry.lon[0].values, coast.lat.values, coast.lon.values, coast.lat.values
+#     ),
+#     bathymetry.lon,
+# )
+# bathymetry = bathymetry.swap_dims({"lon": "distance_from_shore"}).load()
+# bathymetry = bathymetry.interp(
+#     distance_from_shore=np.arange(-200, 10, 0.5),
+#     method="linear",
+# )
+
+
+# %%
+# calculate midshelf flux by interpolating nan and filling ends with constant extrapolation, only for profiles with more than 40 depth points
+midshelf_nitrate_interp = xr.concat(
+    [
+        yi.interpolate_na(
+            "depth", fill_value=[yi.dropna("depth")[0], yi.dropna("depth")[-1]]
+        )
+        for yi in midshelf_nitrate.nitrate
+        if yi.dropna("depth").size > 40
+    ],
+    "time",
+)
+cs_al_midnitr, midnitr_al_cs = xr.align(
+    velocity.cs.dropna("time", how="all"), midshelf_nitrate_interp
+)
+midshelf_nitrate_flux_depth_integrated = xr.apply_ufunc(
+    lambda x, y: np.array(
+        [np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)]) for yi in y]
+    ),
+    cs_al_midnitr.depth.values,
+    (cs_al_midnitr * midnitr_al_cs).values,
+)
+midshelf_nitrate_flux_depth_integrated = xr.DataArray(
+    midshelf_nitrate_flux_depth_integrated, {"time": cs_al_midnitr.time}
+)
+midshelf_nitrate_flux_depth_integrated_filtered = xr.DataArray(
+    median_filter(
+        midshelf_nitrate_flux_depth_integrated.values,
+        size=5,
+    ),
+    {"time": midshelf_nitrate_flux_depth_integrated.time},
+)
+
 # %%
 # use monthly N profiles to calculate nitrate flux for correlation
-velocity_flux_list = []
+midshelf_nitrate_flux_monthly_flux_list = []
 for i, month in enumerate(range(4, 10)):
-    velocity_flux_list.append(
+    midshelf_nitrate_flux_monthly_flux_list.append(
         velocity.where(velocity["time.month"] == month, drop=True).cs
         * midshelf_nitrate_monthly["mean"].sel(month=month)
     )
-velocity_flux = xr.merge(
-    [v.to_dataset(name="nitrate_flux").drop_vars("month") for v in velocity_flux_list]
+midshelf_nitrate_flux_monthly_flux = xr.merge(
+    [
+        v.to_dataset(name="nitrate_flux").drop_vars("month")
+        for v in midshelf_nitrate_flux_monthly_flux_list
+    ]
 )
-velocity_flux["nitrate_flux_depth_integrated"] = (
-    ["time"],
-    xr.apply_ufunc(
-        lambda x, y: np.array(
-            [
-                np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)])
-                if len(yi[~np.isnan(yi)]) > 10
-                else np.nan
-                for yi in y
-            ]
-        ),
-        velocity_flux["depth"].values,
-        velocity_flux["nitrate_flux"].values,
+
+midshelf_nitrate_flux_depth_integrated_monthly = xr.apply_ufunc(
+    lambda x, y: np.array(
+        [
+            np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)])
+            if len(yi[~np.isnan(yi)]) > 10
+            else np.nan
+            for yi in y
+        ]
     ),
+    midshelf_nitrate_flux_monthly_flux["depth"].values,
+    midshelf_nitrate_flux_monthly_flux["nitrate_flux"].values,
+)
+midshelf_nitrate_flux_depth_integrated_monthly = xr.DataArray(
+    midshelf_nitrate_flux_depth_integrated_monthly,
+    {"time": midshelf_nitrate_flux_monthly_flux.time},
+)
+midshelf_nitrate_flux_depth_integrated_monthly_filtered = xr.DataArray(
+    median_filter(
+        midshelf_nitrate_flux_depth_integrated_monthly.values,
+        size=5,
+    ),
+    {"time": midshelf_nitrate_flux_depth_integrated_monthly.time},
 )
 
 
@@ -171,9 +331,11 @@ def plot_correlations(
 
 
 # %%
+
+# %%
 tdelay = np.arange(-20, 20)
 flux_wind_lag_correlation, confint, n = lagged_correlation(
-    velocity_flux["nitrate_flux_depth_integrated"],
+    midshelf_nitrate_flux_depth_integrated_monthly,
     wind["coare_y"],
     tdelay,
 )
@@ -211,7 +373,7 @@ flux_wind_lag_correlation.min()
 # %%
 tdelay = np.arange(-20, 20)
 flux_wind_lag_correlation, confint, n = lagged_correlation(
-    inner_nitrate["dndt"],
+    inner_nitrate["dndt_volume_integrated"],
     wind["coare_y"],
     tdelay,
 )
@@ -230,7 +392,7 @@ flux_wind_lag_correlation.min()
 # %%
 tdelay = np.arange(-20, 20)
 flux_wind_lag_correlation, confint, n = lagged_correlation(
-    midshelf_nitrate["dndt"],
+    midshelf_nitrate["dndt_volume_integrated"],
     wind["coare_y"],
     tdelay,
 )
@@ -248,13 +410,13 @@ flux_wind_lag_correlation.min()
 
 # %%
 temp_flux, temp_inner, temp_mid = xr.align(
-    velocity_flux["nitrate_flux_depth_integrated"],
+    midshelf_nitrate_flux_depth_integrated_monthly,
     inner_nitrate.dropna("depth", how="all"),
     midshelf_nitrate.dropna("depth", how="all"),
 )
 
 flux_nitrate_lag_correlation, confint, n = lagged_correlation(
-    temp_flux, (temp_inner.dndt * 7000 / 2), tdelay
+    temp_flux, (temp_inner["dndt_volume_integrated"]), tdelay
 )
 
 plot_correlations(
@@ -269,7 +431,7 @@ plot_correlations(
 # %%
 flux_nitrate_lag_correlation, confint, n = lagged_correlation(
     inner_nitrate["nitrate"].mean(dim="depth"),
-    velocity_flux["nitrate_flux_depth_integrated"],
+    midshelf_nitrate_flux_depth_integrated_monthly,
     tdelay,
 )
 
@@ -285,7 +447,9 @@ plot_correlations(
 # %%
 tdelay = np.arange(-20, 20)
 flux_dndt_lag_correlation, confint, n = lagged_correlation(
-    midshelf_nitrate.dndt, velocity_flux.nitrate_flux_depth_integrated, tdelay
+    midshelf_nitrate["dndt_volume_integrated"],
+    midshelf_nitrate_flux_depth_integrated_monthly,
+    tdelay,
 )
 
 plot_correlations(
@@ -295,33 +459,6 @@ plot_correlations(
     n,
     xlabel="Lag [days]",
     ylabel="Midshelf Nitrate dN/dt\nDepth Integrated Midshelf Nitrate Flux",
-)
-flux_dndt_lag_correlation.max()
-
-# %%
-# calculate midshelf flux by interpolating nan and filling ends with constant extrapolation, only for profiles with more than 40 depth points
-midshelf_nitrate_interp = xr.concat(
-    [
-        yi.interpolate_na(
-            "depth", fill_value=[yi.dropna("depth")[0], yi.dropna("depth")[-1]]
-        )
-        for yi in midshelf_nitrate.nitrate
-        if yi.dropna("depth").size > 40
-    ],
-    "time",
-)
-cs_al_midnitr, midnitr_al_cs = xr.align(
-    velocity.cs.dropna("time", how="all"), midshelf_nitrate_interp
-)
-midshelf_nitrate_flux_depth_integrated = xr.apply_ufunc(
-    lambda x, y: np.array(
-        [np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)]) for yi in y]
-    ),
-    cs_al_midnitr.depth.values,
-    (cs_al_midnitr * midnitr_al_cs).values,
-)
-midshelf_nitrate_flux_depth_integrated = xr.DataArray(
-    midshelf_nitrate_flux_depth_integrated, {"time": cs_al_midnitr.time}
 )
 
 # %%
@@ -333,7 +470,11 @@ temp_flux, temp_inner, temp_mid = xr.align(
 tdelay = np.arange(-20, 20)
 flux_dndt_lag_correlation, confint, n = lagged_correlation(
     wind.coare_y,
-    (temp_flux - temp_inner.dndt * 7000 / 2 - temp_mid.dndt * 13000 / 2),
+    (
+        temp_flux
+        - temp_inner["dndt_volume_integrated"]
+        - temp_mid["dndt_volume_integrated"]
+    ),
     tdelay,
 )
 
@@ -347,14 +488,9 @@ plot_correlations(
 )
 
 # %%
-midshelf_nitrate_flux_depth_integrated = (
-    midshelf_nitrate_flux_depth_integrated.resample(time="1D").mean()
-)
-
-# %%
 # correlation between nitrate flux calculated using in situ vs monthly mean mid shelf nitrate
 temp_flux, temp_monthly_flux = xr.align(
-    velocity_flux.nitrate_flux_depth_integrated,
+    midshelf_nitrate_flux_depth_integrated_monthly,
     midshelf_nitrate_flux_depth_integrated,
 )
 mask = ~np.isnan(temp_flux) & ~np.isnan(temp_monthly_flux)
@@ -385,8 +521,8 @@ axs[0].set_ylabel("Wind Stress\n[$\\mathsf{N \\; m^{-2}}$]")
 
 axs[1].axhline(0, ls="--", color="black")
 axs[1].plot(
-    velocity_flux["time"],
-    velocity_flux["nitrate_flux_depth_integrated"],
+    midshelf_nitrate_flux_depth_integrated_monthly["time"],
+    midshelf_nitrate_flux_depth_integrated_monthly,
     label="Monthly Mean Nitrate Profiles",
     color="#DDAA33",
     ls="--",
@@ -399,19 +535,19 @@ axs[1].plot(
 )
 axs[1].set_ylim(-50, 40)
 axs[1].set_ylabel("Cross-shelf N Flux\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]")
-axs[1].legend(facecolor="white", frameon=True, framealpha=1, ncols=2, loc="lower left")
-
+# axs[1].legend(facecolor="white", frameon=True, framealpha=1, ncols=2, loc="lower left")
+axs[1].axvline(np.datetime64("2021-06-20"), color="gray", ls="--")
 
 axs[2].axhline(0, ls="--", color="black")
 axs[2].plot(
     inner_nitrate.time,
-    inner_nitrate.dndt * 7000 / 2,
+    inner_nitrate["dndt_volume_integrated"],
     color="#004488",
     label="Inner shelf",
 )
 axs[2].plot(
     midshelf_nitrate.time,
-    midshelf_nitrate.dndt * 13000 / 2,
+    midshelf_nitrate["dndt_volume_integrated_filtered"],
     c="#BB5566",
     label="Midshelf",
     ls="--",
@@ -423,13 +559,17 @@ axs[2].legend(facecolor="white", frameon=True, framealpha=1, ncols=2, loc="lower
 
 axs[3].axhline(0, ls="--", color="black")
 temp_flux, temp_inner, temp_mid = xr.align(
-    velocity_flux.nitrate_flux_depth_integrated,
+    midshelf_nitrate_flux_depth_integrated_monthly,
     inner_nitrate.dropna("depth", how="all"),
     midshelf_nitrate.dropna("depth", how="all"),
 )
 axs[3].plot(
     temp_flux.time,
-    (temp_flux - temp_inner.dndt * 7000 / 2 - temp_mid.dndt * 13000 / 2),
+    (
+        temp_flux
+        - temp_inner["dndt_volume_integrated"]
+        - temp_mid["dndt_volume_integrated_filtered"]
+    ),
     label="Monthly Mean Nitrate Profiles",
     color="#DDAA33",
     ls="--",
@@ -441,7 +581,11 @@ temp_flux, temp_inner, temp_mid = xr.align(
 )
 axs[3].plot(
     temp_flux.time,
-    (temp_flux - temp_inner.dndt * 7000 / 2 - temp_mid.dndt * 13000 / 2),
+    (
+        temp_flux
+        - temp_inner["dndt_volume_integrated"]
+        - temp_mid["dndt_volume_integrated_filtered"]
+    ),
     label="Actual Nitrate Profiles",
     color="#004488",
 )
@@ -466,4 +610,37 @@ plt.savefig(
 )
 
 # %%
+
+# %%
+plt.plot(
+    velocity.cs.time, velocity.cs.isel(depth=60) * 1000, label="Cross-shelf Velocity"
+)
+plt.plot(wind.coare_y.time, wind.coare_y * 100, label="Wind Stress")
+# plt.plot(midshelf_nitrate_flux_depth_integrated.time, midshelf_nitrate_flux_depth_integrated)
+plt.xlim(np.datetime64("2021-05-01"), np.datetime64("2021-09-30"))
+
+# %%
+plt.plot(
+    inner_nitrate.time,
+    inner_nitrate.dndt_volume_integrated.rolling(time=10).mean(),
+    label="Inner Shelf Nitrate dN/dt",
+)
+plt.plot(
+    midshelf_nitrate.time,
+    midshelf_nitrate.dndt_volume_integrated_filtered,
+    label="Midshelf Nitrate dN/dt",
+    ls="--",
+)
+plt.plot(
+    midshelf_nitrate_flux_depth_integrated_monthly.time,
+    midshelf_nitrate_flux_depth_integrated_monthly.rolling(time=10).mean(),
+)
+# plt.plot(velocity.cs.time, velocity.cs.sum(dim="depth")*10, label="Cross-shelf Velocity")
+# plt.plot(midshelf_nitrate_flux_depth_integrated.time, midshelf_nitrate_flux_depth_integrated)
+plt.xlim(np.datetime64("2021-05-01"), np.datetime64("2021-09-30"))
+plt.axvline(np.datetime64("2021-06-20"), color="gray", ls="--")
+
+# %%
 np.nanmedian(temp_flux - temp_inner.dndt * 7000 / 2 - temp_mid.dndt * 13000 / 2)
+
+# %%
