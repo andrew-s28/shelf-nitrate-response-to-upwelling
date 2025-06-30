@@ -22,13 +22,11 @@ dependencies = [
     "xarray[accel,io,parallel]>=2025.1.2",
     "zarr<3.0.4",
 ]
-authors = [
-    {name = "Andrew Scherer", email = "andrew@sourcedepth.com"}
-]
+authors = [{ name = "Andrew Scherer", email = "andrew@sourcedepth.com" }]
 license = "MIT"
 
 [tool.uv]
 exclude-newer = "2025-03-06T00:00:00Z"
 
 [tool.ruff.lint.isort]
-known-local-folder = ["functions"]
+known-local-folder = ["functions", "ttide_py", "ttide"]

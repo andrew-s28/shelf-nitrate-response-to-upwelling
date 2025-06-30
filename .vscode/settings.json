@@ -1,0 +1,8 @@
+{
+    "python.analysis.extraPaths": [
+        "C:\\Users\\asche\\Desktop\\po-code\\code\\ocean_data_utilities",
+        "C:\\Users\\asche\\miniconda3\\",
+        "C:\\Users\\asche\\miniconda3\\lib\\site-packages",
+        "./ttide_py"
+    ]
+}
