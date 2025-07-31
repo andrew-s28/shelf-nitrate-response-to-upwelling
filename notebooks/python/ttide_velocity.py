@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: .venv
+#     display_name: nitrate-upwelling
 #     language: python
 #     name: python3
 # ---
@@ -16,6 +16,7 @@
 # %%
 import os
 from contextlib import redirect_stdout
+from enum import Enum
 from pathlib import Path
 
 import matplotlib.patches as mpatches
@@ -29,7 +30,13 @@ from matplotlib.figure import Figure
 from numpy.typing import NDArray
 from tqdm import tqdm
 
-# import ttide as tt
+
+class IncludeSNR(Enum):
+    """Enum for signal-to-noise ratio boolean plotting flags."""
+
+    YES = True
+    NO = False
+
 
 HTML("""
     <style>
@@ -39,7 +46,7 @@ HTML("""
 """)
 
 # %%
-NOTEBOOK_DIR = Path().resolve()
+NOTEBOOK_DIR = Path().cwd().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 VEL_PATH_V1 = (
@@ -58,19 +65,26 @@ OOI_TIME = slice(np.datetime64("2015-04-01"), None)
 
 # %%
 def fit_utide(u: xr.DataArray, v: xr.DataArray) -> dict:
-    """Fit a T-Tide model to the given u and v components."""
+    """Fit a T-Tide model to the given u and v components.
+
+    Returns:
+        dict: A dictionary containing the tidal constituents and their parameters.
+
+    """
     # don't need to print the output of utide, so redirect stdout to devnull
-    with open(os.devnull, "w") as devnull:
-        with redirect_stdout(devnull):
-            # just save the dict output of utide
-            coef = ut.solve(
-                u["time"],
-                u,
-                v,
-                lat=44.64,
-                method="ols",
-                conf_int="linear",
-            )
+    with (
+        Path(os.devnull).open("w", encoding="utf-8") as devnull,
+        redirect_stdout(devnull),
+    ):
+        # just save the dict output of utide
+        coef = ut.solve(
+            u["time"],
+            u,
+            v,
+            lat=44.64,
+            method="ols",
+            conf_int="linear",
+        )
 
     return coef
 
@@ -78,6 +92,16 @@ def fit_utide(u: xr.DataArray, v: xr.DataArray) -> dict:
 def fit_utide_from_ds(
     ds: xr.Dataset,
 ) -> xr.Dataset:
+    """Fit tidal constituents from a dataset containing u and v components.
+
+    Args:
+        ds (xr.Dataset): A dataset containing the u and v components of velocity,
+            with a 'depth' dimension.
+
+    Returns:
+        xr.Dataset: A dataset containing the fitted tidal constituents and their parameters.
+
+    """
     ds_list: list[xr.Dataset] = []
     for depth in tqdm(ds["depth"], desc="Fitting UTide"):
         # skip depths where either u or v is all NaN
@@ -133,10 +157,22 @@ def plot_tidal_constituents(
     tide_ds: xr.Dataset,
     constituent: str,
     fig: Figure | None = None,
-    snr: bool = True,
+    snr: IncludeSNR = IncludeSNR.YES,
     **kwargs,
 ) -> tuple[Figure, NDArray]:
-    """Plot the tidal constituents from a T-Tide output dataset."""
+    """Plot the tidal constituents from a T-Tide output dataset.
+
+    Args:
+        tide_ds (xr.Dataset): A dataset containing the tidal constituents and their parameters, produced by `fit_utide_from_ds`.
+        constituent (str): The name of the tidal constituent to plot.
+        fig (Figure, optional): A matplotlib figure to plot on. If None, a new figure is created.
+        snr (bool, optional): Whether to include the signal-to-noise ratio in the plot. Defaults to True.
+        **kwargs: Additional keyword arguments to pass to the plotting functions.
+
+    Returns:
+        tuple[Figure, NDArray]: A tuple containing the figure and axes of the plot.
+
+    """
     if fig is None:
         if snr:
             fig, axs = plt.subplots(1, 5, figsize=(12, 6))
@@ -210,7 +246,7 @@ class LegendTitle:
     def __init__(self, text_props=None, width=None) -> None:
         self.text_props = text_props or {}
         self.width = width or None
-        super(LegendTitle, self).__init__()
+        super().__init__()
 
     def legend_artist(self, legend, orig_handle, fontsize, handlebox):
         x0, y0 = handlebox.xdescent, handlebox.ydescent
@@ -362,3 +398,110 @@ plt.savefig(
 )
 
 # %%
+vel = velocity_v5.copy(deep=True)
+
+# %%
+velocity_v5.sel(time=OOI_TIME).u[-1] = np.full(
+    velocity_v5.sel(time=OOI_TIME).u.shape[-1], 0.01
+)  # set the last depth to value
+velocity_v5.sel(time=OOI_TIME).v[-1] = np.full(
+    velocity_v5.sel(time=OOI_TIME).v.shape[-1], 0
+)  # set the last depth to value
+
+# %%
+vel_interp = vel.interpolate_na(dim="depth", method="cubic", max_gap=10)
+
+# %%
+vel_interp_tide = fit_utide_from_ds(vel_interp)
+
+# %%
+fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
+constituents = ["K1", "O1", "M2"]
+for const in constituents:
+    tide = tide_v5_nanoos.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig)
+
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = tide_v5_ooi.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="", marker="o")
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = vel_interp_tide.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
+axs[2].set_xlim(0, 180)
+handles, labels = axs[0].get_legend_handles_labels()
+proxy = mpatches.FancyBboxPatch(
+    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+)
+handles.append("NANOOS v5")
+labels.append("")
+handles.append("OOI v5")
+labels.append("")
+handles.append("OOI Interp")
+labels.append("")
+order = [9, 0, 1, 2, 10, 3, 4, 5, 11, 6, 7, 8]
+handles = [handles[i] for i in order]
+labels = [labels[i] for i in order]
+leg = fig.legend(
+    handles,
+    labels,
+    loc="center",
+    bbox_to_anchor=(0.95, 0.5),
+    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+)
+fig.suptitle("OOI vs. NANOOS v5 Selected Tidal Constituents", fontsize=12, y=0.95)
+# plt.savefig(
+#     FIGURES_DIR / "ttide_velocity_nanoos_ooi_v5.png", dpi=300, bbox_inches="tight"
+# )
+
+# %%
+vel_ooi_interp = xr.open_dataset(
+    DATA_DIR
+    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_interp_v5.nc",
+)
+vel_ooi_interp["u"] = vel_ooi_interp["u_interp"]
+vel_ooi_interp["v"] = vel_ooi_interp["v_interp"]
+vel_ooi_interp_tide = fit_utide_from_ds(vel_ooi_interp.sel(time=OOI_TIME))
+
+# %%
+fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
+constituents = ["K1", "O1", "M2"]
+for const in constituents:
+    tide = tide_v5_nanoos.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig)
+
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = tide_v5_ooi.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="", marker="o")
+
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = vel_ooi_interp_tide.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
+axs[2].set_xlim(0, 180)
+handles, labels = axs[0].get_legend_handles_labels()
+proxy = mpatches.FancyBboxPatch(
+    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+)
+handles.append("NANOOS v5")
+labels.append("")
+handles.append("OOI v5")
+labels.append("")
+handles.append("OOI Interp")
+labels.append("")
+order = [9, 0, 1, 2, 10, 3, 4, 5, 11, 6, 7, 8]
+handles = [handles[i] for i in order]
+labels = [labels[i] for i in order]
+leg = fig.legend(
+    handles,
+    labels,
+    loc="center",
+    bbox_to_anchor=(0.95, 0.5),
+    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+)
+fig.suptitle("OOI vs. NANOOS v5 Selected Tidal Constituents", fontsize=12, y=0.95)
+# plt.savefig(
+#     FIGURES_DIR / "ttide_velocity_nanoos_ooi_v5.png", dpi=300, bbox_inches="tight"
+# )

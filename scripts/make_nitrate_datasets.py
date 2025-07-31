@@ -1,6 +1,4 @@
-"""
-This script processes OOI nitrate profiler data from the inner and mid shelf sites that have been downloaded using ooi-profiler-nitrate-retriever.
-"""
+"""This script processes OOI nitrate profiler data from the inner and mid shelf sites that have been downloaded using ooi-profiler-nitrate-retriever."""
 
 # /// script
 # requires-python = ">=3.13"
@@ -16,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-SCRIPT_DIR = Path().resolve()
+SCRIPT_DIR = Path(__file__).parent.resolve()
 DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names

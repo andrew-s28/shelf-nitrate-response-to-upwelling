@@ -9,7 +9,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,23 +27,21 @@ if TYPE_CHECKING:
     T = floating[TypeVar("T", bound=NBitBase)]
 
 
-SCRIPT_DIR = Path().resolve()
+SCRIPT_DIR = Path(__file__).parent.resolve()
 DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
-VELOCITY_FILE = list(
-    Path(DATA_DIR / "NH10_Mooring_Data").glob("ADCP_NH10_1997_2024_V5*.nc")
-)
-VELOCITY_SAVE_FILE = Path(
-    "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
+VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_v5.nc"
+VELOCITY_SAVE_FILE = (
+    DATA_DIR
+    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_interp_v5.nc"
 )
 
 
 def princax(
     u: NDArray[double] | xr.DataArray, v: NDArray[double] | xr.DataArray
 ) -> tuple[double, double, double]:
-    """
-    Determines the principal axis of variance for the east and north velocities defined by u and v
+    """Determines the principal axis of variance for the east and north velocities defined by u and v.
 
     Args:
         u (scalar or array): east velocity
@@ -51,6 +50,7 @@ def princax(
     Returns:
         tuple of scalar: (theta, major, minor) - the angle of the principal axis CW from north,
             the variance along the major axis, and the variance along the minor axis
+
     """
     if isinstance(u, xr.DataArray):
         # convert to numpy array
@@ -66,11 +66,11 @@ def princax(
     vf = v[ii]
 
     # compute covariance matrix
-    C = np.cov(uf, vf)
+    cov = np.cov(uf, vf)
 
     # calculate principal axis angle (ET, Equation 4.3.23b)
     # > 0 CCW from east axis, < 0 CW from east axis
-    theta = 0.5 * np.rad2deg(np.arctan2(2.0 * C[0, 1], (C[0, 0] - C[1, 1])))
+    theta = 0.5 * np.rad2deg(np.arctan2(2.0 * cov[0, 1], (cov[0, 0] - cov[1, 1])))
     # switch to > 0 CW from north axis, < 0 CCW from north axis
     if theta >= 0:
         theta = 90 - theta
@@ -78,8 +78,8 @@ def princax(
         theta = -(90 + theta)
 
     # calculate variance along major and minor axes (Equation 4.3.24)
-    term1 = C[0, 0] + C[1, 1]
-    term2 = ((C[0, 0] - C[1, 1]) ** 2 + 4 * (C[0, 1] ** 2)) ** 0.5
+    term1 = cov[0, 0] + cov[1, 1]
+    term2 = ((cov[0, 0] - cov[1, 1]) ** 2 + 4 * (cov[0, 1] ** 2)) ** 0.5
     major = np.sqrt(0.5 * (term1 + term2))
     minor = np.sqrt(0.5 * (term1 - term2))
 
@@ -89,11 +89,11 @@ def princax(
 def rot(
     u: NDArray[T] | xr.DataArray,
     v: NDArray[T] | xr.DataArray,
-    theta: float | int | double | floating,
+    theta: float | double | floating,
 ) -> tuple[NDArray[T], NDArray[T]]:
-    """
-    Rotates a vector counter clockwise or a coordinate system clockwise
-    Designed to be used with theta output from princax(u, v)
+    """Rotates a vector counter clockwise or a coordinate system clockwise.
+
+    Designed to be used with theta output from princax(u, v).
 
     Args:
         u (scalar or array): x-component of vector
@@ -102,6 +102,7 @@ def rot(
 
     Returns:
         tuple of scalar or array: (ur, vr) - x and y components of vector in rotated coordinate system
+
     """
     # convert to numpy array
     if isinstance(u, xr.DataArray):
@@ -120,21 +121,30 @@ def rot(
     return ur, vr
 
 
-velocity = xr.open_mfdataset(
-    VELOCITY_FILE,
-)
+velocity = xr.open_mfdataset(VELOCITY_FILE)
 velocity = velocity.squeeze()
-# rename for convienience
-try:
+# rename for convienience, unless already renamed
+with suppress(ValueError):
     velocity = velocity.rename(
         {
             "eastward_velocity": "u",
             "northward_velocity": "v",
-        }
+        },
     )
-except ValueError:
-    # already renamed
-    pass
+
+# velocity["u_interp"] = velocity["u"].copy(deep=True)
+# velocity["v_interp"] = velocity["v"].copy(deep=True)
+
+# # Split out OOI times for custom bottom interpolation
+# OOI_TIME = slice(np.datetime64("2015-04-01"), None)
+# velocity_ooi = velocity.sel(time=OOI_TIME)
+# # interpolate to set bottom velocities for OOI times
+# velocity_ooi["u_interp"][-1] = np.full(velocity_ooi["u"].shape[-1], 0.01)  # set the last depth to value
+# velocity_ooi["v_interp"][-1] = np.full(velocity_ooi["v"].shape[-1], 0)  # set the last depth to value
+# velocity_ooi = velocity_ooi.interpolate_na(dim="depth", method="linear", max_gap=10)
+
+# velocity["u_interp"].loc[{"time": OOI_TIME}] = velocity_ooi["u_interp"]
+# velocity["v_interp"].loc[{"time": OOI_TIME}] = velocity_ooi["v_interp"]
 
 # get filtering weights for 40 hour low pass filter - assumes 1 hour time step in data
 wts: NDArray[float64] = sig.firwin(101, 1 / 40, window="lanczos", fs=1)
@@ -149,7 +159,7 @@ cs_vel, as_vel = rot(evel_filt, nvel_filt, theta)
 velocity["u_filt"] = (["depth", "time"], evel_filt)
 velocity["v_filt"] = (["depth", "time"], nvel_filt)
 velocity["cs"] = (["depth", "time"], cs_vel)
-velocity["cs"] = velocity["cs"] - velocity["cs"].mean(
+velocity["cs"] -= velocity["cs"].mean(
     dim="depth", keep_attrs=True
 )  # remove depth average
 velocity["as"] = (["depth", "time"], as_vel)
@@ -157,21 +167,26 @@ velocity["as"] = (["depth", "time"], as_vel)
 # compute cross-shore and along-shore velocities based on meandering along-shelf flow as in McCabe et al. (2015)
 phi = np.arctan2(np.nanmean(as_vel, axis=0), np.nanmean(cs_vel, axis=0))
 u_n = np.array(
-    [-u * np.sin(p) + v * np.cos(p) for u, v, p in zip(cs_vel.T, as_vel.T, phi)]
+    [
+        -u * np.sin(p) + v * np.cos(p)
+        for u, v, p in zip(cs_vel.T, as_vel.T, phi, strict=True)
+    ]
 ).T
 
 # use masked array for dot product to avoid NaN issues
 u_n_m = np.ma.array(u_n, mask=np.isnan(u_n))
 u_m = np.ma.array(cs_vel, mask=np.isnan(cs_vel))
 u_p = np.ma.array(
-    [(np.ma.dot(un, u) / np.ma.dot(u, u)) * u for u, un in zip(u_m.T, u_n_m.T)]
+    [
+        (np.ma.dot(un, u) / np.ma.dot(u, u)) * u
+        for u, un in zip(u_m.T, u_n_m.T, strict=True)
+    ]
 ).T
 
 velocity["cs_proj"] = (["depth", "time"], u_p)
 
-# velocity = velocity.resample(time="1D").mean()
 velocity.attrs["created_by"] = "make_datasets.py"
-velocity.attrs["created_on"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+velocity.attrs["created_on"] = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
 velocity.attrs["description"] = (
     "Velocities from Stitch In Time dataset first filtered with a 33 hour low pass filtered using a Lanczos window."
     "Cross-shore and along-shore velocities calculated based on the principal axis of variance."
@@ -179,4 +194,4 @@ velocity.attrs["description"] = (
 )
 velocity.attrs["theta"] = theta
 
-velocity.to_netcdf(DATA_DIR / VELOCITY_SAVE_FILE)
+velocity.to_netcdf(VELOCITY_SAVE_FILE)
