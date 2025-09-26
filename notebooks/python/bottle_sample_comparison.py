@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: .venv
+#     display_name: nitrate-upwelling
 #     language: python
 #     name: python3
 # ---
@@ -16,11 +16,16 @@
 # %%
 from pathlib import Path
 
+import cmocean.cm as cmo
 import gsw
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 import xarray as xr
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 # %% [markdown]
 # ## Dataset Loading
@@ -167,7 +172,7 @@ inner_nhl_crse_ctd["longitude"] = inner_nhl_crse_ctd["longitude"] - 360
 inner_nhl_crse_ctd = inner_nhl_crse_ctd.squeeze()
 
 # nitrate data from NH line cruises, nhl_crse_nit = nh line cruise nitrate data
-inner_nhl_crse_nit = pd.read_csv(DATA_DIR / "ship/NH_line_data.csv")
+inner_nhl_crse_nit = pd.read_csv(DATA_DIR / "ship/Nutrients_4_Andrew_all_NCC.csv")
 
 # bin the bottle sample data by date and pressure
 nh_pressure_grid = inner_nhl_crse_ctd["pressure"]
@@ -182,10 +187,10 @@ for i, t in enumerate(inner_nhl_crse_ctd["date"].values):
     # need exact date matches - don't want nearest neighbor for this step
     time_mask = np.where(inner_nhl_crse_nit["Sample Date"] == t)
     for n, d, s, p, lon in zip(
-        inner_nhl_crse_nit["NO3 (um)"].values[time_mask],
+        inner_nhl_crse_nit["no3"].values[time_mask],
         inner_nhl_crse_nit["Sample Date"].values[time_mask],
         inner_nhl_crse_nit["Station"].values[time_mask],
-        inner_nhl_crse_nit["DepthorPressure (m)"].values[time_mask],
+        inner_nhl_crse_nit["pressure"].values[time_mask],
         inner_nhl_crse_nit["Longitude"].values[time_mask],
     ):
         nitr_tbin.append(n)
@@ -218,7 +223,9 @@ inner_nhl_crse["nitrate"] = (("date"), nitr_tbin)
 inner_nhl_crse["station"] = (("date"), stat_tbin)
 
 # view created xarray
-inner_nhl_crse = inner_nhl_crse.where(inner_nhl_crse.station == "NH01", drop=True)
+inner_nhl_crse = inner_nhl_crse.where(
+    (inner_nhl_crse.station == "NH01") | (inner_nhl_crse.station == "NH03"), drop=True
+)
 inner_nhl_crse = inner_nhl_crse.swap_dims({"date": "time"})
 
 # %%
@@ -346,6 +353,80 @@ for i in range(len(ooi_overlapping_bottles.time)):
     )
     temp = ooi_overlapping_bottles.isel(time=i).time
 
+# %%
+# ctd data from NH, nhl_crse_ctd = nh line cruise ctd data
+mid_nhl_crse_ctd = xr.open_dataset(
+    DATA_DIR / "NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
+)
+# fix some xr stuff, assign coords, remove unnecessary dims, etc
+mid_nhl_crse_ctd = mid_nhl_crse_ctd.assign_coords(
+    date=mid_nhl_crse_ctd["time"].astype("datetime64[D]")
+)
+mid_nhl_crse_ctd = mid_nhl_crse_ctd.swap_dims({"time": "date"})
+mid_nhl_crse_ctd["longitude"] = mid_nhl_crse_ctd["longitude"] - 360
+mid_nhl_crse_ctd = mid_nhl_crse_ctd.squeeze()
+
+# nitrate data from NH line cruises, nhl_crse_nit = nh line cruise nitrate data
+mid_nhl_crse_nit = pd.read_csv(DATA_DIR / "ship/Nutrients_4_Andrew_all_NCC.csv")
+
+# bin the bottle sample data by date and pressure
+nh_pressure_grid = mid_nhl_crse_ctd["pressure"]
+nh_time_grid = mid_nhl_crse_ctd["date"]
+mid_nhl_crse_nit["Sample Date"] = pd.to_datetime(
+    mid_nhl_crse_nit["Sample Date"].values,
+    unit="ns",
+)
+
+nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = [], [], [], [], []
+for i, t in enumerate(mid_nhl_crse_ctd["date"].values):
+    # find places where nitrate data lines up with ctd data
+    # need exact date matches - don't want nearest neighbor for this step
+    time_mask = np.where(mid_nhl_crse_nit["Sample Date"] == t)
+    for n, d, s, p, lon in zip(
+        mid_nhl_crse_nit["no3"].values[time_mask],
+        mid_nhl_crse_nit["Sample Date"].values[time_mask],
+        mid_nhl_crse_nit["Station"].values[time_mask],
+        mid_nhl_crse_nit["pressure"].values[time_mask],
+        mid_nhl_crse_nit["Longitude"].values[time_mask],
+    ):
+        nitr_tbin.append(n)
+        pres_tbin.append(p)
+        time_tbin.append(d)
+        long_tbin.append(lon)
+        stat_tbin.append(s)
+
+# make numpy arrays
+nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = (
+    np.array(nitr_tbin),
+    np.array(pres_tbin),
+    np.array(time_tbin),
+    np.array(long_tbin),
+    np.array(stat_tbin),
+)
+
+# make dataarrays for vectorized indexing, doesn't work with np arrays for some reason
+pres_targ = xr.DataArray(pres_tbin, dims="date")
+time_targ = xr.DataArray(time_tbin, dims="date")
+long_targ = xr.DataArray(long_tbin, dims="date")
+
+# bin the ctd data using the arrays from the bottle sample binning, using nearest binning method, e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
+mid_nhl_crse = mid_nhl_crse_ctd.sel(
+    date=time_targ, pressure=pres_targ, longitude=long_targ, method="nearest"
+)
+
+# add nitrate and station
+mid_nhl_crse["nitrate"] = (("date"), nitr_tbin)
+mid_nhl_crse["station"] = (("date"), stat_tbin)
+
+# view created xarray
+mid_nhl_crse = mid_nhl_crse.where(mid_nhl_crse.station == "NH10", drop=True)
+mid_nhl_crse = mid_nhl_crse.swap_dims({"date": "time"})
+
+# %%
+nhl_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
+    profiler=midshelf_nitrate, ship=mid_nhl_crse
+)
+
 # %% [markdown]
 # ## Nitrate Density Relationship and Comparison with Bottle Samples
 
@@ -397,6 +478,13 @@ ax1.plot(
     rasterized=True,
 )
 ax1.plot(
+    mid_nhl_crse["potential_density"],
+    mid_nhl_crse["nitrate"],
+    "o",
+    color="#DDAA33",
+    label="NHL",
+)
+ax1.plot(
     mid_shelf_ooi_crse["pot_density_anom"],
     mid_shelf_ooi_crse["nitrate"],
     "X",
@@ -435,4 +523,202 @@ plt.savefig(
     dpi=1200,
 )
 
+# %% [markdown]
+# ## Density by Deployment Times
+
 # %%
+GLOBEC_TIME = slice(np.datetime64("1997-01-01"), np.datetime64("2004-12-31"))
+NANOOS_TIME = slice(np.datetime64("2006-07-01"), np.datetime64("2014-09-30"))
+OOI_TIME = slice(np.datetime64("2015-04-01"), None)
+
+# %%
+nhl_ctd = xr.open_dataset(
+    DATA_DIR / "NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
+)
+nhl_ctd["longitude"] = nhl_ctd["longitude"] - 360
+nhl_ctd = nhl_ctd.sel(longitude=-124.3).squeeze().dropna("pressure", how="all")
+
+# %%
+nhl_ctd_globec = nhl_ctd.sel(time=GLOBEC_TIME)
+nhl_ctd_nanoos = nhl_ctd.sel(time=NANOOS_TIME)
+nhl_ctd_ooi = nhl_ctd.sel(time=OOI_TIME)
+
+# %%
+plt.violinplot(
+    [
+        # nhl_ctd_globec["potential_density"].dropna("time").to_numpy().flatten(),
+        nhl_ctd_nanoos["potential_density"].dropna("time").to_numpy().flatten(),
+        nhl_ctd_ooi["potential_density"].dropna("time").to_numpy().flatten(),
+    ],
+    positions=[1, 2],
+    # showmeans=True,
+    showmedians=True,
+    # quantiles=[0.25, 0.5, 0.75],
+)
+# plt.ylim(22, 28)
+x_tick_labels = [
+    # f"$\\mathbf{{GLOBEC}}$\n{GLOBEC_TIME.start}\nto\n{GLOBEC_TIME.stop}",
+    f"$\\mathbf{{NANOOS}}$\n{NANOOS_TIME.start}\nto\n{NANOOS_TIME.stop}",
+    f"$\\mathbf{{OOI}}$\n{OOI_TIME.start}\nto\n{'Present' if OOI_TIME.stop is None else OOI_TIME.stop}",
+]
+plt.gca().set_xticks([1, 2], x_tick_labels)
+plt.ylabel("Potential Density Anomaly ($\\mathsf{kg \\; m^{-3}}$)")
+
+
+# %%
+def compare_nhl_densities(ds1: xr.Dataset, ds2: xr.Dataset):
+    pressure = np.intersect1d(ds1["pressure"], ds2["pressure"])
+    for p in pressure:
+        ds1_p = ds1.sel(pressure=p, method="nearest").dropna("time")
+        ds2_p = ds2.sel(pressure=p, method="nearest").dropna("time")
+        if len(ds1_p.time) > 5 and len(ds2_p.time) > 5:
+            ds1_p_stats = sm.stats.DescrStatsW(
+                ds1_p["potential_density"].to_numpy().flatten()
+            )
+            ds2_p_stats = sm.stats.DescrStatsW(
+                ds2_p["potential_density"].to_numpy().flatten()
+            )
+            ds1_ds2 = sm.stats.CompareMeans(ds1_p_stats, ds2_p_stats)
+            if ds1_ds2.ttest_ind(alternative="two-sided")[1] < 0.05:
+                print(f"Pressure: {p} dbar")
+                print(ds1_ds2.ttest_ind(alternative="two-sided"))
+
+
+# %%
+nhl_ctd_nanoos_summer = nhl_ctd_nanoos.sel(
+    time=nhl_ctd_nanoos["time.month"].isin([5, 6, 7, 8, 9])
+)
+nhl_ctd_ooi_summer = nhl_ctd_ooi.sel(
+    time=nhl_ctd_ooi["time.month"].isin([5, 6, 7, 8, 9])
+)
+
+# %%
+compare_nhl_densities(nhl_ctd_nanoos, nhl_ctd_ooi)
+
+
+# %%
+
+
+# %%
+def generate_harmonics(t, harmonics: int, f: float = 1 / 365.2422):
+    exog = np.full((harmonics * 2, len(t)), np.nan)
+    for i in range(harmonics * 2):
+        if i % 2 == 0:
+            exog[i] = np.sin((i // 2 + 1) * 2 * np.pi * f * t)
+        else:
+            exog[i] = np.cos((i // 2 + 1) * 2 * np.pi * f * t)
+    exog = exog.T
+    exog = sm.add_constant(exog)
+    return exog
+
+
+def calc_climatology(t, y, harmonics: int, f: float = 1 / 365.2422):
+    exog = generate_harmonics(t, harmonics=harmonics, f=f)
+    endog = y
+    mod = sm.OLS(endog, exog)
+    res = mod.fit()
+    return res.params @ exog.T, res
+
+
+def calc_climatology_by_depth(da: xr.DataArray, harmonics: int):
+    pressure = da["pressure"]
+    fit_list = []
+    for p in pressure:
+        ds_p = da.sel(pressure=p).dropna("time")
+        if len(ds_p.time) > 50:
+            ds_p = ds_p.groupby("time.dayofyear").mean()
+            _, res = calc_climatology(
+                ds_p["dayofyear"].to_numpy(),
+                ds_p.to_numpy(),
+                harmonics=harmonics,
+            )
+            fit_da = xr.DataArray(
+                res.params
+                @ generate_harmonics(np.arange(1, 366), harmonics=harmonics).T,
+                dims=["dayofyear"],
+                coords={"dayofyear": np.arange(1, 366)},
+            )
+            fit_list.append(fit_da)
+        else:
+            fit_da = xr.DataArray(
+                np.full(365, np.nan),
+                dims=["dayofyear"],
+                coords={"dayofyear": np.arange(1, 366)},
+            )
+            fit_list.append(fit_da)
+    fit_ds = xr.concat(fit_list, dim="pressure")
+    fit_ds = fit_ds.assign_coords({"pressure": pressure})
+
+    return fit_ds
+
+
+# %%
+
+
+# %%
+def add_colorbar(ax, mappable, label: str):
+    divider = make_axes_locatable(ax)
+    ax_cb = divider.new_horizontal(size="5%", pad=0.1, axes_class=plt.Axes)
+    fig.add_axes(ax_cb)
+    cbar = plt.colorbar(mappable, cax=ax_cb, extend="both")
+    cbar.set_label(label, fontsize=10)
+
+
+nhl_clima_nanoos = calc_climatology_by_depth(
+    nhl_ctd_nanoos["potential_density"], harmonics=3
+)
+nhl_clima_ooi = calc_climatology_by_depth(nhl_ctd_ooi["potential_density"], harmonics=3)
+
+fig, (ax0, ax1, ax2) = plt.subplots(
+    nrows=3, ncols=1, figsize=(6, 8), sharex=True, sharey=True
+)
+pcm0 = ax0.pcolormesh(
+    nhl_clima_nanoos["dayofyear"] - 1,
+    -nhl_clima_nanoos["pressure"],
+    nhl_clima_nanoos,
+    shading="auto",
+    cmap=cmo.dense,
+    vmin=24,
+    vmax=27,
+)
+add_colorbar(ax0, pcm0, label="$\\mathsf{kg \\; m^{-3}}$")
+pcm1 = ax1.pcolormesh(
+    nhl_clima_ooi["dayofyear"] - 1,
+    -nhl_clima_ooi["pressure"],
+    nhl_clima_ooi,
+    shading="auto",
+    cmap=cmo.dense,
+    vmin=24,
+    vmax=27,
+)
+add_colorbar(ax1, pcm1, label="$\\mathsf{kg \\; m^{-3}}$")
+pcm2 = ax2.pcolormesh(
+    nhl_clima_ooi["dayofyear"] - 1,
+    -nhl_clima_ooi["pressure"],
+    nhl_clima_ooi - nhl_clima_nanoos,
+    shading="auto",
+    cmap=cmo.balance,
+    vmin=-0.5,
+    vmax=0.5,
+)
+ax2.contour(
+    nhl_clima_ooi["dayofyear"] - 1,
+    -nhl_clima_ooi["pressure"],
+    nhl_clima_ooi - nhl_clima_nanoos,
+    levels=[0],
+    colors="k",
+    linewidths=0.5,
+)
+add_colorbar(ax2, pcm2, label="$\\mathsf{kg \\; m^{-3}}$")
+
+ax0.set_title("(a) NHL Potential Density Climatology: NANOOS (2006-2014)")
+ax1.set_title("(b) NHL Potential Density Climatology: OOI (2015-Present)")
+ax2.set_title("(c) Difference: OOI - NANOOS")
+
+fig.supylabel("Depth (m)")
+fig.supxlabel("Day of Year")
+
+locator = mdates.MonthLocator()
+month_fmt = mdates.DateFormatter("%b")
+ax2.xaxis.set_major_locator(locator)
+ax2.xaxis.set_major_formatter(month_fmt)
