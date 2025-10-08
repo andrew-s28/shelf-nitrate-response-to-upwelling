@@ -48,6 +48,10 @@ VEL_PATH_V1 = (
     DATA_DIR
     / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
 )
+VEL_PATH_V4 = (
+    DATA_DIR
+    / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
+)
 VEL_PATH_V5 = (
     DATA_DIR
     / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
@@ -56,6 +60,7 @@ VEL_PATH_V5 = (
 # %%
 velocity = xr.open_dataset(VEL_PATH_V1)
 velocity_v1 = velocity.copy().resample(time="1h").mean()
+velocity_v4 = xr.open_dataset(VEL_PATH_V4).resample(time="1h").mean(skipna=True)
 velocity_v5 = xr.open_dataset(VEL_PATH_V5).resample(time="1h").mean(skipna=True)
 
 # %% [markdown]
@@ -341,8 +346,8 @@ plot_velocity_v(depth_v.value, variable_v.value, deployment_v.value)
 
 
 # %%
-fig, axs = plt.subplots(2, 1, figsize=(12, 6))
-plt.subplots_adjust(hspace=0.5)
+fig, axs = plt.subplots(3, 1, figsize=(18, 6))
+plt.subplots_adjust(hspace=0.7)
 
 cmap = plt.get_cmap("RdBu_r")
 cmap.set_bad("gray", 1.0)
@@ -357,9 +362,19 @@ velocity_v1_u.plot.pcolormesh(
     cbar_kwargs={"label": "V1 Velocity (m/s)"},
     xlim=(velocity_v5.time[0], velocity_v5.time[-1]),
 )
+velocity_v4_u = velocity_v4["u"][::-1].T
+velocity_v4_u.plot.pcolormesh(
+    ax=axs[1],
+    vmin=-0.5,
+    vmax=0.5,
+    cmap=cmap,
+    label="V4 Velocity (m/s)",
+    yincrease=False,
+    cbar_kwargs={"label": "V4 Velocity (m/s)"},
+)
 velocity_v5_u = velocity_v5["u"][::-1].T
 velocity_v5_u.plot.pcolormesh(
-    ax=axs[1],
+    ax=axs[2],
     vmin=-0.5,
     vmax=0.5,
     cmap=cmap,
@@ -368,14 +383,20 @@ velocity_v5_u.plot.pcolormesh(
     cbar_kwargs={"label": "V5 Velocity (m/s)"},
 )
 axs[0].set_title("V1 Velocity (m/s)")
-axs[1].set_title("V5 Velocity (m/s)")
-axs[1].axvline(
-    np.datetime64("2019-06-01"),
-    color="k",
-    linestyle="--",
-    label="V5 Deployment Start",
-    lw=3,
-)
+axs[1].set_title("V4 Velocity (m/s)")
+axs[2].set_title("V5 Velocity (m/s)")
+xlim, ylim = axs[0].get_xlim(), axs[0].get_ylim()
+axs[1].set_xlim(xlim)
+axs[1].set_ylim(ylim)
+axs[2].set_xlim(xlim)
+axs[2].set_ylim(ylim)
+# axs[1].axvline(
+#     np.datetime64("2019-06-01"),
+#     color="k",
+#     linestyle="--",
+#     label="V5 Deployment Start",
+#     lw=3,
+# )
 
 # %%
 plt.plot(

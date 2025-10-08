@@ -31,10 +31,10 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
-VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_v5.nc"
+VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_v4.nc"
 VELOCITY_SAVE_FILE = (
     DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_interp_v5.nc"
+    / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
 )
 
 

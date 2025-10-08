@@ -46,7 +46,7 @@ MIDSHELF_NITRATE_PATH = (
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 VEL_PATH = (
     DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
+    / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
 )
 OLD_VEL_PATH = list(
     Path(DATA_DIR / "NH10_Mooring_Data/").glob("nh10_hourly_data_1997_2021_part*.nc")
@@ -71,6 +71,13 @@ midshelf_nitrate = midshelf_nitrate.resample(time="1D").mean()
 # interpolate velocity depths to match 1 meter bins in midshelf nitrate
 velocity = velocity.interp(depth=midshelf_nitrate.depth)
 velocity = velocity.resample(time="1D").mean()
+velocity = velocity.where((velocity.depth > 10) & (velocity.depth < 80))
+
+GLOBEC_TIME = slice(np.datetime64("1997-01-01"), np.datetime64("2004-12-31"))
+NANOOS_TIME = slice(np.datetime64("2006-07-01"), np.datetime64("2014-09-30"))
+OOI_TIME = slice(np.datetime64("2015-04-01"), None)
+
+# velocity = velocity.sel(time=OOI_TIME)
 
 # %% [markdown]
 # ## Computing Composites Based on Wind Stress
@@ -583,10 +590,10 @@ for i, d in enumerate(
         )
         # axs[i][j].plot(data['mean'] + data['ci'], -data['depth'], '--', c=cmap(j/11))
         # axs[i][j].plot(data['mean'] - data['ci'], -data['depth'], '--', c=cmap(j/11))
-        # axs[i][j].set_xlim([-0.1, 0.1])
+        axs[i][j].set_xlim([-0.5, 0.5])
         if j == 0:
             axs[i][j].set_ylabel(
-                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})"
+                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})",
             )
         if i == 0:
             axs[i][j].set_title(f"{day} days")
@@ -623,6 +630,8 @@ for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
             )
         axs[i].minorticks_off()
         axs[i].set_ylim([-83, 2])
+        axs[i].set_xlim([-1, 2.5])
+
 
 axs[0].annotate(
     "-3 days\n(a)",
@@ -663,53 +672,38 @@ plt.savefig(
 )
 
 # %%
-flux_60_80 = np.full(
-    (
-        len(composite_midshelf_nitrate_flux_monthly["month"]),
-        len(composite_midshelf_nitrate_flux_monthly["time"]),
-    ),
-    np.nan,
-)
-flux_20_60 = np.full(
-    (
-        len(composite_midshelf_nitrate_flux_monthly["month"]),
-        len(composite_midshelf_nitrate_flux_monthly["time"]),
-    ),
-    np.nan,
-)
-flux_full = np.full(
-    (
-        len(composite_midshelf_nitrate_flux_monthly["month"]),
-        len(composite_midshelf_nitrate_flux_monthly["time"]),
-    ),
-    np.nan,
-)
-for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
-    for j, t in enumerate(composite_midshelf_nitrate_flux_monthly["time"]):
-        # 60 m to 80 m flux
-        data = composite_midshelf_nitrate_flux_monthly.sel(
-            month=m, time=t, depth=slice(60, 80)
-        )
-        mask = ~np.isnan(data["mean"])
-        data = data.isel(depth=mask)
-        if len(data["depth"]) > 0:
-            flux_60_80[i, j] = np.trapezoid(data["mean"], data["depth"])
+flux_60_80 = []
+flux_20_60 = []
+flux_full = []
+for m in composite_midshelf_nitrate_flux_monthly["month"].to_numpy():
+    # 60 m to 80 m flux
+    flux_60_80.append(
+        composite_midshelf_nitrate_flux_monthly.sel(month=m, depth=slice(60, 80))[
+            "mean"
+        ]
+        .interpolate_na(dim="depth")
+        .mean(dim="depth")
+    )
 
-        # 20 m to 40 m flux
-        data = composite_midshelf_nitrate_flux_monthly.sel(
-            month=m, time=t, depth=slice(20, 40)
-        )
-        mask = ~np.isnan(data["mean"])
-        data = data.isel(depth=mask)
-        if len(data["depth"]) > 0:
-            flux_20_60[i, j] = np.trapezoid(data["mean"], data["depth"])
+    # 20 m to 40 m flux
+    flux_20_60.append(
+        composite_midshelf_nitrate_flux_monthly.sel(month=m, depth=slice(20, 40))[
+            "mean"
+        ]
+        .interpolate_na(dim="depth")
+        .mean(dim="depth")
+    )
 
-        # full flux
-        data = composite_midshelf_nitrate_flux_monthly.sel(month=m, time=t)
-        mask = ~np.isnan(data["mean"])
-        data = data.isel(depth=mask)
-        if len(data["depth"]) > 0:
-            flux_full[i, j] = np.trapezoid(data["mean"], data["depth"])
+    # full flux
+    flux_full.append(
+        composite_midshelf_nitrate_flux_monthly.sel(month=m)["mean"]
+        .interpolate_na(dim="depth")
+        .mean(dim="depth")
+    )
+
+flux_60_80: xr.DataArray = xr.concat(flux_60_80, dim="month")
+flux_20_60: xr.DataArray = xr.concat(flux_20_60, dim="month")
+flux_full: xr.DataArray = xr.concat(flux_full, dim="month")
 
 # %%
 # c = ['#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377']
@@ -718,42 +712,43 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
 
 fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(5, 3))
 for i, m in enumerate(
-    composite_midshelf_nitrate_flux_monthly.sel(month=slice(4, 9))["month"]
+    composite_midshelf_nitrate_flux_monthly.sel(month=slice(4, 9))["month"].to_numpy()
 ):
     if i == 0:
         axs[0].plot(
             days,
-            flux_60_80[m - 1],
+            flux_60_80.sel(month=m) - flux_60_80.sel(month=m).sel(time=0),
             color=cmap(i / 6),
-            label=calendar.month_abbr[m.values],
+            label=calendar.month_abbr[m],
             ls="--",
         )
         axs[1].plot(
             days,
-            flux_20_60[m - 1],
+            flux_20_60.sel(month=m) - flux_20_60.sel(month=m).sel(time=0),
             color=cmap(i / 6),
-            label=calendar.month_abbr[m.values],
+            label=calendar.month_abbr[m],
             ls="--",
         )
     else:
         axs[0].plot(
             days,
-            flux_60_80[m - 1],
+            flux_60_80.sel(month=m) - flux_60_80.sel(month=m).sel(time=0),
             color=cmap(i / 6),
-            label=calendar.month_abbr[m.values],
+            label=calendar.month_abbr[m],
         )
         axs[1].plot(
             days,
-            flux_20_60[m - 1],
+            flux_20_60.sel(month=m) - flux_20_60.sel(month=m).sel(time=0),
             color=cmap(i / 6),
-            label=calendar.month_abbr[m.values],
+            label=calendar.month_abbr[m],
         )
 
 axs[0].minorticks_off()
 axs[1].minorticks_off()
 axs[0].axhline(0, color="black")
 axs[1].axhline(0, color="black")
-axs[1].legend(loc="upper center", ncol=3, framealpha=1)
+handles, labels = axs[0].get_legend_handles_labels()
+fig.legend(handles, labels, loc="upper center", ncol=3, framealpha=1)
 fig.supxlabel("Days from Beginning of Upwelling Event", y=-0.07)
 fig.supylabel("Nitrate Flux [$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]", x=-0.02)
 axs[0].annotate("(a)", xy=(0.88, 0.05), xycoords="axes fraction", fontsize=10)

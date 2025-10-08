@@ -53,6 +53,10 @@ VEL_PATH_V1 = (
     DATA_DIR
     / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
 )
+VEL_PATH_V4 = (
+    DATA_DIR
+    / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
+)
 VEL_PATH_V5 = (
     DATA_DIR
     / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
@@ -222,17 +226,22 @@ def plot_tidal_constituents(
 
 # %%
 velocity_v1 = xr.open_dataset(VEL_PATH_V1).resample(time="1h").mean()
+velocity_v4 = xr.open_dataset(VEL_PATH_V4).resample(time="1h").mean()
 velocity_v5 = xr.open_dataset(VEL_PATH_V5).resample(time="1h").mean()
 
 velocity_v1_nanoos = velocity_v1.sel(time=NANOOS_TIME)
+velocity_v4_nanoos = velocity_v4.sel(time=NANOOS_TIME)
 velocity_v5_nanoos = velocity_v5.sel(time=NANOOS_TIME)
 velocity_v1_ooi = velocity_v1.sel(time=OOI_TIME)
+velocity_v4_ooi = velocity_v4.sel(time=OOI_TIME)
 velocity_v5_ooi = velocity_v5.sel(time=OOI_TIME)
 
 # %%
 tide_v1_nanoos = fit_utide_from_ds(velocity_v1_nanoos)
+tide_v4_nanoos = fit_utide_from_ds(velocity_v4_nanoos)
 tide_v5_nanoos = fit_utide_from_ds(velocity_v5_nanoos)
 tide_v1_ooi = fit_utide_from_ds(velocity_v1_ooi)
+tide_v4_ooi = fit_utide_from_ds(velocity_v4_ooi)
 tide_v5_ooi = fit_utide_from_ds(velocity_v5_ooi)
 
 
@@ -264,67 +273,108 @@ class LegendTitle:
 
 
 # %%
-fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
-constituents = ["K1", "O1", "M2"]
-for const in constituents:
-    tide = tide_v1_nanoos.sel(constituent=const)
-    fig, axs = plot_tidal_constituents(tide, const, fig)
+def make_ttide_figure(
+    tide_v1: xr.Dataset,
+    tide_v4: xr.Dataset,
+    tide_v5: xr.Dataset,
+    constituents: list[str],
+    tides_to_plot: list[str],
+    section_name: str = "",
+) -> tuple[Figure, NDArray]:
+    """Make a figure comparing the tidal constituents from different velocity datasets.
 
-[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
-for const in constituents:
-    tide = tide_v5_nanoos.sel(constituent=const)
-    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
-handles, labels = axs[0].get_legend_handles_labels()
-proxy = mpatches.FancyBboxPatch(
-    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+    Args:
+        tide_v1 (xr.Dataset): Tidal constituents from velocity dataset version 1.
+        tide_v4 (xr.Dataset): Tidal constituents from velocity dataset version 4.
+        tide_v5 (xr.Dataset): Tidal constituents from velocity dataset version 5.
+        constituents (list[str]): The names of the tidal constituents to plot.
+        snr (IncludeSNR, optional): Whether to include the signal-to-noise ratio in the plot. Defaults to IncludeSNR.YES.
+
+    Returns:
+        tuple[Figure, NDArray]: The matplotlib Figure object and array of Axes objects containing the plot.
+    """
+    fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
+
+    if "v1" in tides_to_plot:
+        for const in constituents:
+            tide = tide_v1.sel(constituent=const)
+            fig, axs = plot_tidal_constituents(tide, const, fig)
+    [ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+    if "v4" in tides_to_plot:
+        for const in constituents:
+            tide = tide_v4.sel(constituent=const)
+            fig, axs = plot_tidal_constituents(tide, const, fig, ls="-.")
+    [ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+    if "v5" in tides_to_plot:
+        for const in constituents:
+            tide = tide_v5.sel(constituent=const)
+            fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
+    handles, labels = axs[0].get_legend_handles_labels()
+    mpatches.FancyBboxPatch(
+        xy=(0, 0),
+        width=0,
+        height=0,
+        visible=False,
+        mutation_aspect=0,
+    )
+    if "v1" in tides_to_plot:
+        handles.append(section_name + " v1")
+        labels.append("")
+    if "v4" in tides_to_plot:
+        handles.append(section_name + " v4")
+        labels.append("")
+    if "v5" in tides_to_plot:
+        handles.append(section_name + " v5")
+        labels.append("")
+    if len(tides_to_plot) == 1:
+        order = [3, 0, 1, 2]
+    elif len(tides_to_plot) == 2:
+        order = [6, 0, 1, 2, 7, 3, 4, 5]
+    else:
+        order = [9, 0, 1, 2, 10, 3, 4, 5, 11, 6, 7, 8]
+    handles = [handles[i] for i in order]
+    labels = [labels[i] for i in order]
+    fig.legend(
+        handles,
+        labels,
+        loc="center",
+        bbox_to_anchor=(0.95, 0.5),
+        handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+    )
+    return fig, axs
+
+
+# %%
+fig, axs = make_ttide_figure(
+    tide_v1_nanoos,
+    tide_v4_nanoos,
+    tide_v5_nanoos,
+    ["K1", "O1", "M2"],
+    ["v1", "v4"],
+    section_name="NANOOS",
 )
-handles.append("NANOOS v1")
-labels.append("")
-handles.append("NANOOS v5")
-labels.append("")
-order = [6, 0, 1, 2, 7, 3, 4, 5]
-handles = [handles[i] for i in order]
-labels = [labels[i] for i in order]
-leg = fig.legend(
-    handles,
-    labels,
-    loc="center",
-    bbox_to_anchor=(0.95, 0.5),
-    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+
+# %%
+fig, axs = make_ttide_figure(
+    tide_v1_nanoos,
+    tide_v4_nanoos,
+    tide_v5_nanoos,
+    ["K1", "O1", "M2"],
+    ["v1", "v5"],
+    section_name="NANOOS",
 )
-fig.suptitle("NANOOS v1 vs. v5 Selected Tidal Constituents", fontsize=12, y=0.95)
 plt.savefig(
     FIGURES_DIR / "ttide_velocity_nanoos_v1_v5.png", dpi=300, bbox_inches="tight"
 )
 
 # %%
-fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
-constituents = ["K1", "O1", "M2"]
-for const in constituents:
-    tide = tide_v1_ooi.sel(constituent=const)
-    fig, axs = plot_tidal_constituents(tide, const, fig)
-
-[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
-for const in constituents:
-    tide = tide_v5_ooi.sel(constituent=const)
-    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
-handles, labels = axs[0].get_legend_handles_labels()
-proxy = mpatches.FancyBboxPatch(
-    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
-)
-handles.append("OOI v1")
-labels.append("")
-handles.append("OOI v5")
-labels.append("")
-order = [6, 0, 1, 2, 7, 3, 4, 5]
-handles = [handles[i] for i in order]
-labels = [labels[i] for i in order]
-leg = fig.legend(
-    handles,
-    labels,
-    loc="center",
-    bbox_to_anchor=(0.95, 0.5),
-    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+fig, axs = make_ttide_figure(
+    tide_v1_ooi,
+    tide_v4_ooi,
+    tide_v5_ooi,
+    ["K1", "O1", "M2"],
+    ["v1", "v5"],
+    section_name="OOI",
 )
 fig.suptitle("OOI v1 vs. v5 Selected Tidal Constituents", fontsize=12, y=0.95)
 plt.savefig(FIGURES_DIR / "ttide_velocity_ooi_v1_v5.png", dpi=300, bbox_inches="tight")
@@ -361,6 +411,40 @@ leg = fig.legend(
 fig.suptitle("OOI vs. NANOOS v1 Selected Tidal Constituents", fontsize=12, y=0.95)
 plt.savefig(
     FIGURES_DIR / "ttide_velocity_nanoos_ooi_v1.png", dpi=300, bbox_inches="tight"
+)
+
+# %%
+fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
+constituents = ["K1", "O1", "M2"]
+for const in constituents:
+    tide = tide_v4_nanoos.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig)
+
+[ax.set_prop_cycle(None) for ax in axs]  # reset color cycle for next plot
+for const in constituents:
+    tide = tide_v4_ooi.sel(constituent=const)
+    fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
+handles, labels = axs[0].get_legend_handles_labels()
+proxy = mpatches.FancyBboxPatch(
+    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+)
+handles.append("NANOOS v4")
+labels.append("")
+handles.append("OOI v4")
+labels.append("")
+order = [6, 0, 1, 2, 7, 3, 4, 5]
+handles = [handles[i] for i in order]
+labels = [labels[i] for i in order]
+leg = fig.legend(
+    handles,
+    labels,
+    loc="center",
+    bbox_to_anchor=(0.95, 0.5),
+    handler_map={str: LegendTitle(text_props={"fontsize": 10}, width=55)},
+)
+fig.suptitle("OOI vs. NANOOS v4 Selected Tidal Constituents", fontsize=12, y=0.95)
+plt.savefig(
+    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v4.png", dpi=300, bbox_inches="tight"
 )
 
 # %%
@@ -409,7 +493,7 @@ velocity_v5.sel(time=OOI_TIME).v[-1] = np.full(
 )  # set the last depth to value
 
 # %%
-vel_interp = vel.interpolate_na(dim="depth", method="cubic", max_gap=10)
+vel_interp = vel.interpolate_na(dim="depth", method="linear", max_gap=10)
 
 # %%
 vel_interp_tide = fit_utide_from_ds(vel_interp)
