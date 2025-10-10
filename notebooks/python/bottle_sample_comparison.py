@@ -641,9 +641,18 @@ def calc_climatology_by_depth(da: xr.DataArray, harmonics: int):
                         ("dayofyear"),
                         res.params @ generate_harmonics(t_fit, harmonics=harmonics).T,
                     ),
+                    "fit_std": (
+                        ("dayofyear"),
+                        np.sqrt(
+                            res.mse_resid
+                            * np.einsum(
+                                "ij,jk,ki->i", exog, res.normalized_cov_params, exog.T
+                            )
+                        ),
+                    ),
                     "fit_ci": (
                         ("dayofyear"),
-                        distributions.t.ppf(0.95, t_fit.size - exog.shape[1])
+                        distributions.t.ppf(0.91, t_fit.size - exog.shape[1])
                         * np.sqrt(
                             res.mse_resid
                             * np.einsum(
@@ -659,6 +668,7 @@ def calc_climatology_by_depth(da: xr.DataArray, harmonics: int):
             fit_ds = xr.Dataset(
                 {
                     "fit": (("dayofyear"), np.full(365, np.nan)),
+                    "fit_std": (("dayofyear"), np.full(365, np.nan)),
                     "fit_ci": (("dayofyear"), np.full(365, np.nan)),
                 },
                 coords={"dayofyear": t_fit},
@@ -764,3 +774,6 @@ locator = mdates.MonthLocator()
 month_fmt = mdates.DateFormatter("%b")
 ax2.xaxis.set_major_locator(locator)
 ax2.xaxis.set_major_formatter(month_fmt)
+
+# %% [markdown]
+# Discussion on the overlapping of two confidence intervals with approximately equal variance and size: https://stats.stackexchange.com/questions/18215/relation-between-confidence-interval-and-testing-statistical-hypothesis-for-t-te/18259#18259
