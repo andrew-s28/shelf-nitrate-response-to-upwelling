@@ -604,7 +604,7 @@ fig.suptitle("Cross-shelf Nitrate Flux")
 # %%
 fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(6, 3))
 composite_midshelf_nitrate_flux_monthly_slice = (
-    composite_midshelf_nitrate_flux_monthly.sel(time=slice(-3, 3, 3), month=slice(4, 9))
+    composite_midshelf_nitrate_flux_monthly.sel(time=slice(-2, 2, 2), month=slice(4, 9))
 )
 
 for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
@@ -634,7 +634,7 @@ for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
 
 
 axs[0].annotate(
-    "-3 days\n(a)",
+    "-2 days\n(a)",
     xy=(0.95, 0.95),
     xycoords="axes fraction",
     fontsize=10,
@@ -650,7 +650,7 @@ axs[1].annotate(
     va="top",
 )
 axs[2].annotate(
-    "+3 days\n(c)",
+    "+2 days\n(c)",
     xy=(0.95, 0.95),
     xycoords="axes fraction",
     fontsize=10,
@@ -678,7 +678,7 @@ flux_full = []
 for m in composite_midshelf_nitrate_flux_monthly["month"].to_numpy():
     # 60 m to 80 m flux
     flux_60_80.append(
-        composite_midshelf_nitrate_flux_monthly.sel(month=m, depth=slice(60, 80))[
+        composite_midshelf_nitrate_flux_monthly.sel(month=m, depth=slice(70, 80))[
             "mean"
         ]
         .interpolate_na(dim="depth")
