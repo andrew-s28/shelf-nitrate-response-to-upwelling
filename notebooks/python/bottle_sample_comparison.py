@@ -25,6 +25,7 @@ import pandas as pd
 import statsmodels.api as sm
 import xarray as xr
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.stats import distributions
 
 
 # %% [markdown]
@@ -625,6 +626,8 @@ def calc_climatology_by_depth(da: xr.DataArray, harmonics: int):
     fit_list = []
     for p in pressure:
         ds_p = da.sel(pressure=p).dropna("time")
+        t_fit = np.arange(1, 366)
+        exog = generate_harmonics(t_fit, harmonics=harmonics)
         if len(ds_p.time) > 50:
             ds_p = ds_p.groupby("time.dayofyear").mean()
             _, res = calc_climatology(
@@ -632,27 +635,39 @@ def calc_climatology_by_depth(da: xr.DataArray, harmonics: int):
                 ds_p.to_numpy(),
                 harmonics=harmonics,
             )
-            fit_da = xr.DataArray(
-                res.params
-                @ generate_harmonics(np.arange(1, 366), harmonics=harmonics).T,
-                dims=["dayofyear"],
-                coords={"dayofyear": np.arange(1, 366)},
+            fit_ds = xr.Dataset(
+                {
+                    "fit": (
+                        ("dayofyear"),
+                        res.params @ generate_harmonics(t_fit, harmonics=harmonics).T,
+                    ),
+                    "fit_ci": (
+                        ("dayofyear"),
+                        distributions.t.ppf(0.95, t_fit.size - exog.shape[1])
+                        * np.sqrt(
+                            res.mse_resid
+                            * np.einsum(
+                                "ij,jk,ki->i", exog, res.normalized_cov_params, exog.T
+                            )
+                        ),
+                    ),
+                },
+                coords={"dayofyear": t_fit},
             )
-            fit_list.append(fit_da)
+            fit_list.append(fit_ds)
         else:
-            fit_da = xr.DataArray(
-                np.full(365, np.nan),
-                dims=["dayofyear"],
-                coords={"dayofyear": np.arange(1, 366)},
+            fit_ds = xr.Dataset(
+                {
+                    "fit": (("dayofyear"), np.full(365, np.nan)),
+                    "fit_ci": (("dayofyear"), np.full(365, np.nan)),
+                },
+                coords={"dayofyear": t_fit},
             )
-            fit_list.append(fit_da)
+            fit_list.append(fit_ds)
     fit_ds = xr.concat(fit_list, dim="pressure")
     fit_ds = fit_ds.assign_coords({"pressure": pressure})
 
     return fit_ds
-
-
-# %%
 
 
 # %%
@@ -675,7 +690,7 @@ fig, (ax0, ax1, ax2) = plt.subplots(
 pcm0 = ax0.pcolormesh(
     nhl_clima_nanoos["dayofyear"] - 1,
     -nhl_clima_nanoos["pressure"],
-    nhl_clima_nanoos,
+    nhl_clima_nanoos["fit"],
     shading="auto",
     cmap=cmo.dense,
     vmin=24,
@@ -685,7 +700,7 @@ add_colorbar(ax0, pcm0, label="$\\mathsf{kg \\; m^{-3}}$")
 pcm1 = ax1.pcolormesh(
     nhl_clima_ooi["dayofyear"] - 1,
     -nhl_clima_ooi["pressure"],
-    nhl_clima_ooi,
+    nhl_clima_ooi["fit"],
     shading="auto",
     cmap=cmo.dense,
     vmin=24,
@@ -695,7 +710,7 @@ add_colorbar(ax1, pcm1, label="$\\mathsf{kg \\; m^{-3}}$")
 pcm2 = ax2.pcolormesh(
     nhl_clima_ooi["dayofyear"] - 1,
     -nhl_clima_ooi["pressure"],
-    nhl_clima_ooi - nhl_clima_nanoos,
+    nhl_clima_ooi["fit"] - nhl_clima_nanoos["fit"],
     shading="auto",
     cmap=cmo.balance,
     vmin=-0.5,
@@ -704,12 +719,39 @@ pcm2 = ax2.pcolormesh(
 ax2.contour(
     nhl_clima_ooi["dayofyear"] - 1,
     -nhl_clima_ooi["pressure"],
-    nhl_clima_ooi - nhl_clima_nanoos,
+    nhl_clima_ooi["fit"] - nhl_clima_nanoos["fit"],
     levels=[0],
     colors="k",
     linewidths=0.5,
 )
 add_colorbar(ax2, pcm2, label="$\\mathsf{kg \\; m^{-3}}$")
+
+# Calculate the lower and upper bounds for both climatologies at each (pressure, dayofyear)
+ooi_lower = nhl_clima_ooi["fit"] - nhl_clima_ooi["fit_ci"]
+ooi_upper = nhl_clima_ooi["fit"] + nhl_clima_ooi["fit_ci"]
+nanoos_lower = nhl_clima_nanoos["fit"] - nhl_clima_nanoos["fit_ci"]
+nanoos_upper = nhl_clima_nanoos["fit"] + nhl_clima_nanoos["fit_ci"]
+
+# Intervals intersect if the lower bound of one is less than the upper bound of the other and vice versa
+intersect = (ooi_lower <= nanoos_upper) & (nanoos_lower <= ooi_upper)
+
+ax2.contourf(
+    intersect["dayofyear"],
+    -intersect["pressure"],
+    intersect.where(~intersect),  # only fill where there's no intersection
+    hatches=["xx"],
+    alpha=0,
+    levels=[0, 1],
+)
+ax2.contour(
+    intersect["dayofyear"],
+    -intersect["pressure"],
+    intersect,
+    levels=[0],
+    linestyles="--",
+    colors="k",
+    linewidths=2,
+)
 
 ax0.set_title("(a) NHL Potential Density Climatology: NANOOS (2006-2014)")
 ax1.set_title("(b) NHL Potential Density Climatology: OOI (2015-Present)")
