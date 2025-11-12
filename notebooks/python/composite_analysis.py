@@ -28,6 +28,10 @@ from scipy.stats import distributions
 from tqdm import tqdm
 
 # %%
+# For plotting months with colormap
+colors = cmaps["viridis"](np.linspace(0, 1, 6))
+
+# %%
 NOTEBOOK_DIR = Path().cwd().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
@@ -80,7 +84,7 @@ OOI_TIME = slice(np.datetime64("2015-04-01"), None)
 WIND_MIN, WIND_MAX = -0.05, -0.03
 days = np.arange(-5, 6)
 composite_wind_events = []
-for t1, t2 in tqdm(pairwise(wind), desc="Finding Wind Stress Events"):
+for t1, t2 in pairwise(tqdm(wind["time"], desc="Finding Wind Stress Events")):
     wind_t1 = wind.sel({"time": t1})
     wind_t2 = wind.sel({"time": t2})
     # find times when wind switches from above 0.03 to below -0.05
@@ -245,7 +249,6 @@ composite_stress_monthly = composite(
     composite_type=CompositeType.MONTHLY,
 )
 
-colors = cmaps["viridis"](np.linspace(0, 1, 6))
 fig, ax = plt.subplots(sharex=True, sharey=True, figsize=(7, 4))
 lines = []
 for i, m in enumerate(composite_stress_monthly["month"].sel(month=slice(4, 9))):
@@ -303,9 +306,9 @@ composite_vel_monthly_cs = composite(
 
 # %%
 fig, axs = plt.subplots(nrows=6, ncols=11, sharex=True, sharey=True, figsize=(12, 10))
-for i, d in enumerate(composite_vel_monthly_cs["month"].sel(month=slice(4, 9))):
+for i, mon in enumerate(composite_vel_monthly_cs["month"].sel(month=slice(4, 9))):
     for j, day in enumerate(days):
-        data = composite_vel_monthly_cs.sel(month=d, time=day)
+        data = composite_vel_monthly_cs.sel(month=mon, time=day)
         axs[i][j].axvline(0, color="black")
         axs[i][j].plot(data["mean"], -data["depth"], c=colors[i])
         axs[i][j].fill_betweenx(
@@ -320,18 +323,18 @@ for i, d in enumerate(composite_vel_monthly_cs["month"].sel(month=slice(4, 9))):
         axs[i][j].set_xlim([-0.1, 0.1])
         if j == 0:
             axs[i][j].set_ylabel(
-                f"{calendar.month_abbr[data['month'].to_numpy()]} (N={np.nanmean(n):.0f})",
+                f"{calendar.month_abbr[mon.to_numpy()]} (N={np.nanmean(n):.0f})",
             )
         if i == 0:
             axs[i][j].set_title(f"{day} days")
 fig.supxlabel("Velocity [$\\mathsf{m \\; s^{-1}}$]")
-fig.supylabel("Depth [$\\mathsf{m}$]")
+fig.supylabel("z [$\\mathsf{{m}}$]")
 fig.suptitle("Cross-shelf velocity")
 
 # %%
 fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(6, 3))
 composite_vel_monthly_cs_slice = composite_vel_monthly_cs.sel(
-    time=slice(-3, 3, 3),
+    time=slice(-2, 2, 2),
     month=slice(4, 9),
 )
 
@@ -373,14 +376,11 @@ for i, v in enumerate(composite_vel_monthly_cs_slice["time"]):
             )
 bbox_props = {"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."}
 
-axs[0].annotate("-3 days\n(a)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+axs[0].annotate("-2 days\n(a)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
 axs[1].annotate("0 days\n(b)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
-axs[2].annotate("+3 days\n(c)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+axs[2].annotate("+2 days\n(c)", xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
 handles, labels = axs[0].get_legend_handles_labels()
 fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.9, 0.5))
-# axs[0].annotate('-5 days', xy=(0.95, 0.9), xycoords='axes fraction', fontsize=10, ha='right')
-# axs[1].annotate('0 days', xy=(0.95, 0.9), xycoords='axes fraction', fontsize=10, ha='right')
-# axs[2].annotate('+5 days', xy=(0.95, 0.9), xycoords='axes fraction', fontsize=10, ha='right')
 
 fig.supxlabel("Cross-shelf velocity [$\\mathsf{cm \\; s^{-1}}$]", y=-0.07)
 fig.supylabel("z [$\\mathsf{{m}}$]", x=0.02)
