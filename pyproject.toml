@@ -29,5 +29,16 @@ license = "MIT"
 [tool.uv]
 exclude-newer = "2025-06-30T00:00:00Z"
 
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "FURB177",  # implicit-cwd; Path.resolve() is necessary for relative paths in Python notebooks
+    "CPY001",   # missing-copyright-notice; project is MIT licensed
+]
+
+
 [tool.ruff.lint.isort]
 known-local-folder = ["functions", "ttide_py", "ttide"]
