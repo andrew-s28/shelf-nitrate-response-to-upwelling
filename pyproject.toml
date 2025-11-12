@@ -40,6 +40,7 @@ ignore = [
     "ERA001",   # commented-out-code; can't be used with jupytext scripts
     "D100",     # undocumented-public-module; don't require docstring for jupytext scripts
     "INP001",   # implicit-namespace-package; don't enforce __init__.py files for jupytext scripts
+    "T201",     # print; printing is fine in notebooks
 ]
 
 
