@@ -39,9 +39,9 @@ VELOCITY_SAVE_FILE = (
 
 
 def princax(
-    u: NDArray[double] | xr.DataArray, v: NDArray[double] | xr.DataArray
+    u: NDArray[double] | xr.DataArray, v: NDArray[double] | xr.DataArray,
 ) -> tuple[double, double, double]:
-    """Determines the principal axis of variance for the east and north velocities defined by u and v.
+    """Determine the principal axis of variance for the east and north velocities defined by u and v.
 
     Args:
         u (scalar or array): east velocity
@@ -153,14 +153,14 @@ wts: NDArray[float64] = sig.firwin(101, 1 / 40, window="lanczos", fs=1)
 evel_filt: NDArray[float64] = sig.filtfilt(wts, 1, velocity["u"].values, axis=1)
 nvel_filt: NDArray[float64] = sig.filtfilt(wts, 1, velocity["v"].values, axis=1)
 theta, major, minor = princax(
-    np.nanmean(evel_filt, axis=1), np.nanmean(nvel_filt, axis=1)
+    np.nanmean(evel_filt, axis=1), np.nanmean(nvel_filt, axis=1),
 )
 cs_vel, as_vel = rot(evel_filt, nvel_filt, theta)
 velocity["u_filt"] = (["depth", "time"], evel_filt)
 velocity["v_filt"] = (["depth", "time"], nvel_filt)
 velocity["cs"] = (["depth", "time"], cs_vel)
 velocity["cs"] -= velocity["cs"].mean(
-    dim="depth", keep_attrs=True
+    dim="depth", keep_attrs=True,
 )  # remove depth average
 velocity["as"] = (["depth", "time"], as_vel)
 
@@ -170,7 +170,7 @@ u_n = np.array(
     [
         -u * np.sin(p) + v * np.cos(p)
         for u, v, p in zip(cs_vel.T, as_vel.T, phi, strict=True)
-    ]
+    ],
 ).T
 
 # use masked array for dot product to avoid NaN issues
@@ -180,7 +180,7 @@ u_p = np.ma.array(
     [
         (np.ma.dot(un, u) / np.ma.dot(u, u)) * u
         for u, un in zip(u_m.T, u_n_m.T, strict=True)
-    ]
+    ],
 ).T
 
 velocity["cs_proj"] = (["depth", "time"], u_p)
