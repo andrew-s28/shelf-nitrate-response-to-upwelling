@@ -1,0 +1,9 @@
+station_index,station_index_bins,station,lat,lon,depth,transect,notes
+0,110,NH01,44.67,-124.10,20,Newport,
+1,110,NH03,44.67,-124.13,45,Newport,
+2,110,NH05,44.67,-124.17,58,Newport,
+3,110,NH10,44.67,-124.28,78,Newport,
+4,111,NH15,44.67,-124.40,88,Newport,
+5,111,NH20,44.67,-124.52,135,Newport,
+6,114,NH25,44.67,-124.63,281,Newport,
+7,112,NH30,44.67,-124.75,200,Newport,
