@@ -9,7 +9,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: .venv
+#     display_name: nitrate-upwelling
 #     language: python
 #     name: python3
 # ---
@@ -62,7 +62,7 @@ from scipy.stats import distributions
 from sympy import Piecewise, integrate, symbols
 from tqdm import tqdm as tq
 
-import functions.util as util
+from functions import util
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -77,9 +77,7 @@ plt.style.use(os.path.join(notebook_dir, "../misc/mplstyles/jgr_manuscript.mplst
 
 # For confidence intervals
 ci = 95
-norm = (
-    distributions.norm()
-)  # for use with n > 30 so Student's t can be approximated by normal distribution
+norm = distributions.norm()  # for use with n > 30 so Student's t can be approximated by normal distribution
 qg_norm = norm.isf((1 - ci / 100) / 2)
 
 # %% [markdown]
@@ -96,25 +94,18 @@ nitrate = xr.open_dataset(
     os.path.join(
         notebook_dir,
         "../data/CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17.nc",
-    )
+    ),
 )
-deployments = np.unique(nitrate.deployment.values)[
-    ~np.isnan(np.unique(nitrate.deployment.values))
-]
+deployments = np.unique(nitrate.deployment.values)[~np.isnan(np.unique(nitrate.deployment.values))]
 # rename for convenience
 nitrate = nitrate.rename(
-    {"salinity_corrected_nitrate": "nitrate", "sigma_theta": "density"}
+    {"salinity_corrected_nitrate": "nitrate", "sigma_theta": "density"},
 )
 nitrate["depth_integrated_nitrate"] = (
     ["time"],
     xr.apply_ufunc(
         lambda x, y: np.array(
-            [
-                np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)])
-                if len(yi[~np.isnan(yi)]) > 0
-                else np.nan
-                for yi in y
-            ]
+            [np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)]) if len(yi[~np.isnan(yi)]) > 0 else np.nan for yi in y],
         ),
         nitrate.depth.values,
         nitrate.nitrate.values,
@@ -123,7 +114,8 @@ nitrate["depth_integrated_nitrate"] = (
 nitrate = nitrate.resample(time="1D").median()
 
 nitrate["dndt"] = nitrate["depth_integrated_nitrate"].differentiate(
-    "time", datetime_unit="s"
+    "time",
+    datetime_unit="s",
 )
 nitrate = nitrate.dropna("time", how="all", subset=["nitrate"])
 
@@ -133,8 +125,7 @@ x_bins = np.linspace(21, 27, 51)
 y_bins = np.linspace(-5, 35, 51)
 for i, d in enumerate(nitrate.depth):
     temp = nitrate.sel(depth=d).where(
-        (~np.isnan(nitrate.density.sel(depth=d)))
-        & (~np.isnan(nitrate.nitrate.sel(depth=d))),
+        (~np.isnan(nitrate.density.sel(depth=d))) & (~np.isnan(nitrate.nitrate.sel(depth=d))),
         drop=True,
     )
     hist, _, _ = np.histogram2d(temp.density, temp.nitrate, bins=[x_bins, y_bins])
@@ -163,10 +154,10 @@ midshelf_nitrate = xr.open_dataset(
     os.path.join(
         notebook_dir,
         "../data/CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14.nc",
-    )
+    ),
 )
 midshelf_nitrate = midshelf_nitrate.rename(
-    {"salinity_corrected_nitrate": "nitrate", "sigma_theta": "density"}
+    {"salinity_corrected_nitrate": "nitrate", "sigma_theta": "density"},
 )
 
 
@@ -212,12 +203,7 @@ midshelf_nitrate["depth_integrated_nitrate"] = (
     ["time"],
     xr.apply_ufunc(
         lambda x, y: np.array(
-            [
-                np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)])
-                if len(yi[~np.isnan(yi)]) > 20
-                else np.nan
-                for yi in y
-            ]
+            [np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)]) if len(yi[~np.isnan(yi)]) > 20 else np.nan for yi in y],
         ),
         midshelf_nitrate.depth.values,
         midshelf_nitrate.nitrate.values,
@@ -226,7 +212,8 @@ midshelf_nitrate["depth_integrated_nitrate"] = (
 midshelf_nitrate = midshelf_nitrate.resample(time="1D").median()
 
 midshelf_nitrate["dndt"] = midshelf_nitrate["depth_integrated_nitrate"].differentiate(
-    "time", datetime_unit="s"
+    "time",
+    datetime_unit="s",
 )
 
 # %% [markdown]
@@ -254,10 +241,7 @@ for i, f in enumerate(tq(fout)):
         continue
     if np.any(np.isnan(wind.coare_y[i - avg_len * 5 : i])):
         continue
-    fout[i] = (
-        simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask])
-        / avg_len
-    )
+    fout[i] = simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask]) / avg_len
 wind["w8d"] = (["time"], fout)
 avg_len = 5
 fout = np.nan * np.zeros(len(wind["day_num"]))
@@ -274,10 +258,7 @@ for i, f in enumerate(tq(fout)):
         continue
     if np.any(np.isnan(wind.coare_y[i - avg_len * 5 : i])):
         continue
-    fout[i] = (
-        simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask])
-        / avg_len
-    )
+    fout[i] = simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask]) / avg_len
 wind["w5d"] = (["time"], fout)
 
 # %% [markdown]
@@ -304,7 +285,8 @@ col_names = [
 ]
 for f in fileList:
     df_temp = pd.read_csv(
-        os.path.join(notebook_dir, "../data/ship/ea_ship_data/", f), usecols=col_names
+        os.path.join(notebook_dir, "../data/ship/ea_ship_data/", f),
+        usecols=col_names,
     )
     rows = df_temp.loc[df_temp["Station"] == "CE01"]
     df_list.append(rows)
@@ -321,7 +303,7 @@ ooi_crse = ooi_crse.rename(
         "CTD Temperature 1 [deg C]": "temp1",
         "CTD Temperature 2 [deg C]": "temp2",
         "Discrete Nitrate [uM]": "nitrate",
-    }
+    },
 )
 ooi_crse["time"] = pd.to_datetime(ooi_crse["time"])
 ooi_cruse = ooi_crse.set_index(["time", "pressure"])
@@ -333,7 +315,9 @@ ooi_crse = ooi_crse.where(ooi_crse.nitrate > -100, drop=True)
 ooi_crse["pot_density_anom"] = gsw.density.sigma0(
     ooi_crse["sal1"],
     gsw.conversions.CT_from_t(
-        ooi_crse["sal1"], ooi_crse["temp1"], ooi_crse["pressure"]
+        ooi_crse["sal1"],
+        ooi_crse["temp1"],
+        ooi_crse["pressure"],
     ),
 )
 
@@ -343,20 +327,20 @@ ooi_overlapping_bottles = []
 ooi_notoverlapping_bottles = []
 prof_overlapping_bottles = []
 prof_notoverlapping_bottles = []
-for i, (t1, t2) in enumerate(zip(temp.time.values, ooi_crse.time.values)):
+for i, (t1, t2) in enumerate(zip(temp.time.values, ooi_crse.time.values, strict=False)):
     if np.abs((t1 - t2) / np.timedelta64(1, "D")) < 1:
         ooi_overlapping_bottles.append(ooi_crse.isel(time=i))
         prof_overlapping_bottles.append(
-            nitrate.sel(time=t1 - np.timedelta64(1, "D"), method="nearest")
+            nitrate.sel(time=t1 - np.timedelta64(1, "D"), method="nearest"),
         )
     else:
         ooi_notoverlapping_bottles.append(ooi_crse.isel(time=i))
         prof_notoverlapping_bottles.append(temp.isel(time=i))
 print(
-    f"{len(ooi_overlapping_bottles)} out of {len(ooi_overlapping_bottles) + len(ooi_notoverlapping_bottles)} OOI bottle samples overlap with profiler deployments within one day."
+    f"{len(ooi_overlapping_bottles)} out of {len(ooi_overlapping_bottles) + len(ooi_notoverlapping_bottles)} OOI bottle samples overlap with profiler deployments within one day.",
 )
 print(
-    f"{len(ooi_notoverlapping_bottles)} out of {len(ooi_overlapping_bottles) + len(ooi_notoverlapping_bottles)} OOI bottle samples do not overlap with profiler deployments within one day."
+    f"{len(ooi_notoverlapping_bottles)} out of {len(ooi_overlapping_bottles) + len(ooi_notoverlapping_bottles)} OOI bottle samples do not overlap with profiler deployments within one day.",
 )
 ooi_overlapping_bottles = xr.concat(ooi_overlapping_bottles, dim="time")
 prof_overlapping_bottles = xr.concat(prof_overlapping_bottles, dim="time")
@@ -382,11 +366,11 @@ nhl_crse_ctd = xr.open_dataset(
     os.path.join(
         notebook_dir,
         "../data/NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
-    )
+    ),
 )
 # fix some xr stuff, assign coords, remove unnecessary dims, etc
 nhl_crse_ctd = nhl_crse_ctd.assign_coords(
-    date=nhl_crse_ctd["time"].astype("datetime64[D]")
+    date=nhl_crse_ctd["time"].astype("datetime64[D]"),
 )
 nhl_crse_ctd = nhl_crse_ctd.swap_dims({"time": "date"})
 nhl_crse_ctd["longitude"] = nhl_crse_ctd["longitude"] - 360
@@ -399,7 +383,8 @@ nhl_crse_nit = pd.read_csv(os.path.join(notebook_dir, "../data/ship/NH_line_data
 nh_pressure_grid = nhl_crse_ctd["pressure"]
 nh_time_grid = nhl_crse_ctd["date"]
 nhl_crse_nit["Sample Date"] = pd.to_datetime(
-    nhl_crse_nit["Sample Date"].values, unit="ns"
+    nhl_crse_nit["Sample Date"].values,
+    unit="ns",
 )
 
 nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = [], [], [], [], []
@@ -413,6 +398,7 @@ for i, t in enumerate(nhl_crse_ctd["date"].values):
         nhl_crse_nit["Station"].values[time_mask],
         nhl_crse_nit["DepthorPressure (m)"].values[time_mask],
         nhl_crse_nit["Longitude"].values[time_mask],
+        strict=False,
     ):
         nitr_tbin.append(n)
         pres_tbin.append(p)
@@ -436,7 +422,10 @@ long_targ = xr.DataArray(long_tbin, dims="date")
 
 # bin the ctd data using the arrays from the bottle sample binning, using nearest binning method, e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
 nhl_crse = nhl_crse_ctd.sel(
-    date=time_targ, pressure=pres_targ, longitude=long_targ, method="nearest"
+    date=time_targ,
+    pressure=pres_targ,
+    longitude=long_targ,
+    method="nearest",
 )
 
 # add nitrate and station
@@ -456,7 +445,7 @@ nhl_overlapping_bottles = []
 nhl_notoverlapping_bottles = []
 prof_overlapping_bottles = []
 prof_notoverlapping_bottles = []
-for i, (t1, t2) in enumerate(zip(temp.time.values, nhl_crse_nh01.time.values)):
+for i, (t1, t2) in enumerate(zip(temp.time.values, nhl_crse_nh01.time.values, strict=False)):
     if np.abs((t1 - t2) / np.timedelta64(1, "D")) < 1:
         # print((t1 - t2)/np.timedelta64(1, 'D'))
         nhl_overlapping_bottles.append(nhl_crse_nh01.isel(time=i))
@@ -468,10 +457,10 @@ nhl_overlapping_bottles = xr.concat(nhl_overlapping_bottles, dim="time")
 nhl_notoverlapping_bottles = xr.concat(nhl_notoverlapping_bottles, dim="time")
 prof_overlapping_bottles = xr.concat(prof_overlapping_bottles, dim="time")
 print(
-    f"{len(np.unique(nhl_overlapping_bottles.date))} out of {len(np.unique(nhl_overlapping_bottles.date)) + len(np.unique(nhl_notoverlapping_bottles.date))} NHL bottle samples overlap with profiler deployments within one day."
+    f"{len(np.unique(nhl_overlapping_bottles.date))} out of {len(np.unique(nhl_overlapping_bottles.date)) + len(np.unique(nhl_notoverlapping_bottles.date))} NHL bottle samples overlap with profiler deployments within one day.",
 )
 print(
-    f"{len(np.unique(nhl_notoverlapping_bottles.date))} out of {len(np.unique(nhl_overlapping_bottles.date)) + len(np.unique(nhl_notoverlapping_bottles.date))} NHL bottle samples do not overlap with profiler deployments within one day."
+    f"{len(np.unique(nhl_notoverlapping_bottles.date))} out of {len(np.unique(nhl_overlapping_bottles.date)) + len(np.unique(nhl_notoverlapping_bottles.date))} NHL bottle samples do not overlap with profiler deployments within one day.",
 )
 
 # %%
@@ -503,7 +492,11 @@ ooi_crse_inshore = ooi_crse
 # %%
 plt.plot(nitrate.density, nitrate.nitrate, ".", color="#004488", label="Profiler")
 plt.plot(
-    nhl_crse.potential_density, nhl_crse.nitrate, "o", color="#DDAA33", label="NHL"
+    nhl_crse.potential_density,
+    nhl_crse.nitrate,
+    "o",
+    color="#DDAA33",
+    label="NHL",
 )
 plt.plot(ooi_crse.pot_density_anom, ooi_crse.nitrate, "X", color="#BB5566", label="OOI")
 plt.xlim(21, 27)
@@ -511,16 +504,15 @@ plt.xlabel("Density Anomaly ($\\mathsf{kg \\; m^{-3}}$)")
 plt.ylabel("Nitrate Conc. [$\\mathsf{\\mu M}$]")
 handles, labels = plt.gca().get_legend_handles_labels()
 by_label = dict(
-    zip(labels, handles)
+    zip(labels, handles, strict=False),
 )  # dicts can't have duplicate keys, avoids duplicate legend entries
 plt.legend(by_label.values(), by_label.keys())
 print(
-    f"Mean N below 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density < 25.8).nitrate)}"
+    f"Mean N below 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density < 25.8).nitrate)}",
 )
 print(
-    f"Mean N above 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density > 25.8).nitrate)}"
+    f"Mean N above 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density > 25.8).nitrate)}",
 )
-pass
 
 # %% [markdown]
 # ### Midshelf
@@ -543,7 +535,8 @@ col_names = [
 ]
 for f in fileList:
     df_temp = pd.read_csv(
-        os.path.join(notebook_dir, "../data/ship/ea_ship_data/", f), usecols=col_names
+        os.path.join(notebook_dir, "../data/ship/ea_ship_data/", f),
+        usecols=col_names,
     )
     rows = df_temp.loc[df_temp["Station"] == "CE02"]
     df_list.append(rows)
@@ -560,7 +553,7 @@ ooi_crse = ooi_crse.rename(
         "CTD Temperature 1 [deg C]": "temp1",
         "CTD Temperature 2 [deg C]": "temp2",
         "Discrete Nitrate [uM]": "nitrate",
-    }
+    },
 )
 ooi_crse["time"] = pd.to_datetime(ooi_crse["time"])
 ooi_cruse = ooi_crse.set_index(["time", "pressure"])
@@ -572,7 +565,9 @@ ooi_crse = ooi_crse.where(ooi_crse.nitrate > -100, drop=True)
 ooi_crse["pot_density_anom"] = gsw.density.sigma0(
     ooi_crse["sal1"],
     gsw.conversions.CT_from_t(
-        ooi_crse["sal1"], ooi_crse["temp1"], ooi_crse["pressure"]
+        ooi_crse["sal1"],
+        ooi_crse["temp1"],
+        ooi_crse["pressure"],
     ),
 )
 
@@ -582,11 +577,11 @@ ooi_overlapping_bottles = []
 ooi_notoverlapping_bottles = []
 prof_overlapping_bottles = []
 prof_notoverlapping_bottles = []
-for i, (t1, t2) in enumerate(zip(temp.time.values, ooi_crse.time.values)):
+for i, (t1, t2) in enumerate(zip(temp.time.values, ooi_crse.time.values, strict=False)):
     if np.abs((t1 - t2) / np.timedelta64(1, "D")) < 1:
         ooi_overlapping_bottles.append(ooi_crse.isel(time=i))
         prof_overlapping_bottles.append(
-            nitrate.sel(time=t1 - np.timedelta64(1, "D"), method="nearest")
+            nitrate.sel(time=t1 - np.timedelta64(1, "D"), method="nearest"),
         )
     else:
         ooi_notoverlapping_bottles.append(ooi_crse.isel(time=i))
@@ -594,12 +589,12 @@ for i, (t1, t2) in enumerate(zip(temp.time.values, ooi_crse.time.values)):
 print(
     f"{len(ooi_overlapping_bottles)} out of "
     f"{len(ooi_overlapping_bottles) + len(ooi_notoverlapping_bottles)} "
-    "OOI bottle samples overlap with profiler deployments within one day."
+    "OOI bottle samples overlap with profiler deployments within one day.",
 )
 print(
     f"{len(ooi_notoverlapping_bottles)} out of "
     f"{len(ooi_overlapping_bottles) + len(ooi_notoverlapping_bottles)} "
-    "OOI bottle samples do not overlap with profiler deployments within one day."
+    "OOI bottle samples do not overlap with profiler deployments within one day.",
 )
 ooi_overlapping_bottles = xr.concat(ooi_overlapping_bottles, dim="time")
 prof_overlapping_bottles = xr.concat(prof_overlapping_bottles, dim="time")
@@ -674,14 +669,14 @@ ax0.set_xlim(21, 27)
 
 handles, labels = ax0.get_legend_handles_labels()
 by_label = dict(
-    zip(labels, handles)
+    zip(labels, handles, strict=False),
 )  # dicts can't have duplicate keys, avoids duplicate legend entries
 ax0.legend(by_label.values(), by_label.keys())
 print(
-    f"Mean N below 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density < 25.8).nitrate)}"
+    f"Mean N below 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density < 25.8).nitrate)}",
 )
 print(
-    f"Mean N above 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density > 25.8).nitrate)}"
+    f"Mean N above 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density > 25.8).nitrate)}",
 )
 
 ax1.plot(
@@ -698,24 +693,36 @@ ax1.set_xlim(21, 27)
 # ax1.set_ylabel('Nitrate Conc. [$\mathsf{\mu M}$]')
 handles, labels = ax1.get_legend_handles_labels()
 by_label = dict(
-    zip(labels, handles)
+    zip(labels, handles, strict=False),
 )  # dicts can't have duplicate keys, avoids duplicate legend entries
 ax1.legend(by_label.values(), by_label.keys())
 fig.supxlabel("Potential Density Anomaly ($\\mathsf{kg \\; m^{-3}}$)")
 fig.supylabel("Nitrate Conc. [$\\mathsf{\\mu M}$]")
 
 ax0.text(
-    0.95, 0.05, "(a)", transform=ax0.transAxes, fontsize=10, ha="right", va="bottom"
+    0.95,
+    0.05,
+    "(a)",
+    transform=ax0.transAxes,
+    fontsize=10,
+    ha="right",
+    va="bottom",
 )
 ax1.text(
-    0.95, 0.05, "(b)", transform=ax1.transAxes, fontsize=10, ha="right", va="bottom"
+    0.95,
+    0.05,
+    "(b)",
+    transform=ax1.transAxes,
+    fontsize=10,
+    ha="right",
+    va="bottom",
 )
 
 print(
-    f"Mean N below 25.8 sigma: {np.nanmean(midshelf_nitrate.where(nitrate.density < 25.8).nitrate)}"
+    f"Mean N below 25.8 sigma: {np.nanmean(midshelf_nitrate.where(nitrate.density < 25.8).nitrate)}",
 )
 print(
-    f"Mean N above 25.8 sigma: {np.nanmean(midshelf_nitrate.where(nitrate.density > 25.8).nitrate)}"
+    f"Mean N above 25.8 sigma: {np.nanmean(midshelf_nitrate.where(nitrate.density > 25.8).nitrate)}",
 )
 
 plt.savefig(
@@ -735,7 +742,7 @@ cmap = cmap.from_list("cmap", cmap(np.linspace(0, 1, 11)), 11)
 
 # %%
 new_velocity_nh10 = xr.open_dataset(
-    "../data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc"
+    "../data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc",
 )
 # old_velocity_nh10 = xr.open_mfdataset(
 #     os.path.join(
@@ -747,7 +754,7 @@ old_velocity_nh10 = xr.open_dataset(
     os.path.join(
         notebook_dir,
         "../data/NH10_Mooring_Data/nh10_hourly_data_1997_2021.nc",
-    )
+    ),
 )
 
 # %%
@@ -774,7 +781,7 @@ velocity_nh10 = xr.open_mfdataset(
     os.path.join(
         notebook_dir,
         "../data/NH10_Mooring_Data/*.nc",
-    )
+    ),
 )
 velocity_nh10 = velocity_nh10.squeeze()
 velocity_original_depths = velocity_nh10.depth
@@ -785,7 +792,8 @@ wts = firwin(120, 1 / 33, window="lanczos", fs=1)
 evel_filt = filtfilt(wts, 1, velocity_nh10["u"].values)
 nvel_filt = filtfilt(wts, 1, velocity_nh10["v"].values)
 theta, major, minor = util.princax(
-    np.nanmean(nvel_filt, axis=1), np.nanmean(evel_filt, axis=1)
+    np.nanmean(nvel_filt, axis=1),
+    np.nanmean(evel_filt, axis=1),
 )
 temp_cs, temp_as = util.rot(evel_filt, nvel_filt, theta)
 velocity_nh10["cs"] = (["depth", "time"], temp_cs)
@@ -835,7 +843,8 @@ plt.plot(
 # %%
 plt.plot(new_velocity_nh10.time, new_velocity_nh10.u.isel(depth=1))
 plt.plot(
-    old_velocity_nh10.time, old_velocity_nh10.eastward_velocity.squeeze().isel(depth=1)
+    old_velocity_nh10.time,
+    old_velocity_nh10.eastward_velocity.squeeze().isel(depth=1),
 )
 plt.xlim(np.datetime64("2015-01-01"), np.datetime64("2017-01-01"))
 
@@ -843,7 +852,8 @@ plt.xlim(np.datetime64("2015-01-01"), np.datetime64("2017-01-01"))
 velocity_nh10 = velocity_nh10.resample(time="1D").mean()
 velocity_nh10 = velocity_nh10.squeeze()
 velocity_nh10 = velocity_nh10.where(
-    ((velocity_nh10["time.month"] > 3) & (velocity_nh10["time.month"] < 10)), drop=True
+    ((velocity_nh10["time.month"] > 3) & (velocity_nh10["time.month"] < 10)),
+    drop=True,
 )
 # velocity_nh10["density"] = gsw.rho_t_exact(
 #     velocity_nh10.salinity, velocity_nh10.temperature, velocity_nh10.depth
@@ -854,7 +864,7 @@ velocity_nh10 = xr.open_mfdataset(
     os.path.join(
         notebook_dir,
         "../data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_part*.nc",
-    )
+    ),
 )
 velocity_nh10 = velocity_nh10.squeeze()
 # velocity_nh10 = xr.open_dataset("../data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc")
@@ -868,7 +878,7 @@ velocity_nh10_da = velocity_nh10.mean(dim="depth")
 phi = np.arctan2(np.nanmean(nvel_filt, axis=0), np.nanmean(evel_filt, axis=0))
 rot = np.array([[[np.cos(p), np.sin(p)], [-np.sin(p), np.cos(p)]] for p in phi])
 vel = np.einsum("ijk->jki", np.array([evel_filt, nvel_filt]))
-ns = np.array([vt @ r for vd in vel for vt, r in zip(vd, rot)]).reshape(vel.shape)
+ns = np.array([vt @ r for vd in vel for vt, r in zip(vd, rot, strict=False)]).reshape(vel.shape)
 n = ns[:, :, 0]
 s = ns[:, :, 1]
 uproj = np.array([np.sin(np.abs(phi)) * nd for nd in n])
@@ -879,7 +889,8 @@ wts = firwin(120, 1 / 33, window="lanczos", fs=1)
 evel_filt = filtfilt(wts, 1, velocity_nh10["eastward_velocity"].values)
 nvel_filt = filtfilt(wts, 1, velocity_nh10["northward_velocity"].values)
 theta, major, minor = util.princax(
-    np.nanmean(evel_filt, axis=1), np.nanmean(nvel_filt, axis=1)
+    np.nanmean(evel_filt, axis=1),
+    np.nanmean(nvel_filt, axis=1),
 )
 # theta = 23.5
 temp_cs, temp_as = util.rot(evel_filt, nvel_filt, theta)
@@ -921,7 +932,7 @@ velocity_nh10 = velocity_nh10.interp(depth=midshelf_nitrate.depth)
 # %%
 days = np.arange(-5, 6)
 composite_wind_events = []
-for i, (t1, t2) in enumerate(zip(tq(wind.time[:-1]), wind.time[1:])):
+for i, (t1, t2) in enumerate(zip(tq(wind.time[:-1]), wind.time[1:], strict=False)):
     temp1 = wind.sel({"time": t1})
     temp2 = wind.sel({"time": t2})
     if (temp2.coare_y < -0.05) & (temp1.coare_y > -0.03):
@@ -929,45 +940,41 @@ for i, (t1, t2) in enumerate(zip(tq(wind.time[:-1]), wind.time[1:])):
         if np.all(temp3.coare_y < 0):
             composite_wind_events.append(
                 wind.sel(
-                    time=slice(t2 - np.timedelta64(5, "D"), t2 + np.timedelta64(5, "D"))
-                )
+                    time=slice(t2 - np.timedelta64(5, "D"), t2 + np.timedelta64(5, "D")),
+                ),
             )
             composite_wind_events[-1] = composite_wind_events[-1].drop_vars(
-                ["dominant_wpd", "average_wpd"]
+                ["dominant_wpd", "average_wpd"],
             )
 # select only composites with the full amount of time points (11)
 composite_wind_events = [c for c in composite_wind_events if len(c.time) == len(days)]
 composite_vel_events = [
-    velocity_nh10.where(velocity_nh10.time.isin(cw.time), drop=True)
-    for cw in composite_wind_events
+    velocity_nh10.where(velocity_nh10.time.isin(cw.time), drop=True) for cw in composite_wind_events
 ]
 composite_vel_events = [cv for cv in composite_vel_events if cv.time.size == len(days)]
 composite_midshelf_nitrate_events = [
-    midshelf_nitrate.where(midshelf_nitrate.time.isin(cw.time), drop=True)
-    for cw in composite_wind_events
+    midshelf_nitrate.where(midshelf_nitrate.time.isin(cw.time), drop=True) for cw in composite_wind_events
 ]
-composite_midshelf_nitrate_events = [
-    cmn for cmn in composite_midshelf_nitrate_events if cmn.time.size == len(days)
-]
+composite_midshelf_nitrate_events = [cmn for cmn in composite_midshelf_nitrate_events if cmn.time.size == len(days)]
 
 # deal with overlapping events
 composite_times = [c.time[5].values for c in composite_wind_events]
-for i, (t1, t2) in enumerate(zip(composite_times[:-1], composite_times[1:])):
+for i, (t1, t2) in enumerate(zip(composite_times[:-1], composite_times[1:], strict=False)):
     if t2 - t1 < np.timedelta64(5, "D"):
         composite_wind_events[i] = composite_wind_events[i].sel(
-            time=slice(None, t2 - np.timedelta64(1, "D"))
+            time=slice(None, t2 - np.timedelta64(1, "D")),
         )
 composite_times = [c.time[5].values for c in composite_vel_events]
-for i, (t1, t2) in enumerate(zip(composite_times[:-1], composite_times[1:])):
+for i, (t1, t2) in enumerate(zip(composite_times[:-1], composite_times[1:], strict=False)):
     if t2 - t1 < np.timedelta64(5, "D"):
         composite_vel_events[i] = composite_vel_events[i].sel(
-            time=slice(None, t2 - np.timedelta64(1, "D"))
+            time=slice(None, t2 - np.timedelta64(1, "D")),
         )
 composite_times = [c.time[5].values for c in composite_midshelf_nitrate_events]
-for i, (t1, t2) in enumerate(zip(composite_times[:-1], composite_times[1:])):
+for i, (t1, t2) in enumerate(zip(composite_times[:-1], composite_times[1:], strict=False)):
     if t2 - t1 < np.timedelta64(5, "D"):
         composite_midshelf_nitrate_events[i] = composite_midshelf_nitrate_events[i].sel(
-            time=slice(None, t2 - np.timedelta64(1, "D"))
+            time=slice(None, t2 - np.timedelta64(1, "D")),
         )
 
 # %%
@@ -1005,20 +1012,18 @@ def composite(
     composite_length = composite_days.size
     ds_list = np.empty(composite_length, dtype=xr.Dataset)
     for i in range(composite_length):
-        composite_data = [
-            d.isel(time=i) for d in events if len(d.time) == composite_length
-        ]
+        composite_data = [d.isel(time=i) for d in events if len(d.time) == composite_length]
         composite_data = xr.concat(composite_data, dim="time")
         if monthly:
             composite_mean = composite_data.groupby("time.month").mean(
-                dim="time", skipna=True
+                dim="time",
+                skipna=True,
             )[var]
             composite_std = composite_data.groupby("time.month").std(
-                dim="time", skipna=True
+                dim="time",
+                skipna=True,
             )[var]
-            composite_count = composite_data.groupby("time.month").count(dim="time")[
-                var
-            ]
+            composite_count = composite_data.groupby("time.month").count(dim="time")[var]
             ds_list[i] = xr.Dataset(
                 {
                     "mean": composite_mean,
@@ -1039,9 +1044,7 @@ def composite(
                 },
             )
     ds = xr.concat(ds_list, dim="time")
-    ds["ci"] = (
-        ds["std"] / np.sqrt(ds["count"]) * distributions.t(ds["count"] - 1).isf(0.025)
-    )
+    ds["ci"] = ds["std"] / np.sqrt(ds["count"]) * distributions.t(ds["count"] - 1).isf(0.025)
     return ds
 
 
@@ -1075,7 +1078,10 @@ axs.set_ylabel("Wind Stress [$\\mathsf{N} \\; \\mathsf{m^{-2}}$]")
 
 # %%
 composite_stress_monthly = composite(
-    composite_wind_events, "coare_y", days, monthly=True
+    composite_wind_events,
+    "coare_y",
+    days,
+    monthly=True,
 )
 
 # %%
@@ -1113,7 +1119,8 @@ for i, m in enumerate(composite_stress_monthly["month"].sel(month=slice(4, 9))):
 fig.supylabel("Wind Stress [$\\mathsf{N} \\; \\mathsf{m^{-2}}$]")
 fig.supxlabel("Days from Beginning of Upwelling Event")
 plt.savefig(
-    os.path.join(notebook_dir, "../manuscript/composite_wind_stress.pdf"), format="pdf"
+    os.path.join(notebook_dir, "../manuscript/composite_wind_stress.pdf"),
+    format="pdf",
 )
 
 # %%
@@ -1140,7 +1147,7 @@ for i, d in enumerate(composite_vel_monthly_cs["month"].sel(month=slice(4, 9))):
         axs[i][j].set_xlim([-0.1, 0.1])
         if j == 0:
             axs[i][j].set_ylabel(
-                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})"
+                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})",
             )
         if i == 0:
             axs[i][j].set_title(f"{day} days")
@@ -1151,7 +1158,8 @@ fig.suptitle("Cross-shelf velocity")
 # %%
 fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(5, 3))
 composite_vel_monthly_cs_slice = composite_vel_monthly_cs.sel(
-    time=slice(-3, 3, 3), month=slice(4, 9)
+    time=slice(-3, 3, 3),
+    month=slice(4, 9),
 )
 
 
@@ -1210,7 +1218,7 @@ for i, d in enumerate(composite_vel_monthly_as["month"].sel(month=slice(4, 9))):
         # axs[i][j].set_xlim([-0.1, 0.1])
         if j == 0:
             axs[i][j].set_ylabel(
-                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})"
+                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})",
             )
         if i == 0:
             axs[i][j].set_title(f"{day} days")
@@ -1221,7 +1229,8 @@ fig.suptitle("Along-shelf velocity")
 # %%
 fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(5, 3))
 composite_vel_monthly_as_slice = composite_vel_monthly_as.sel(
-    time=slice(-5, 5, 5), month=slice(4, 9)
+    time=slice(-5, 5, 5),
+    month=slice(4, 9),
 )
 
 for i, v in enumerate(composite_vel_monthly_as_slice["time"]):
@@ -1256,10 +1265,10 @@ plt.savefig(
 
 # %%
 midshelf_nitrate_med = midshelf_nitrate.where(midshelf_nitrate.depth < 79).median(
-    dim="time"
+    dim="time",
 )
 midshelf_nitrate_std = midshelf_nitrate.where(midshelf_nitrate.depth < 79).std(
-    dim="time"
+    dim="time",
 )
 plt.plot(
     midshelf_nitrate_med.nitrate,
@@ -1296,18 +1305,12 @@ plt.legend()
 # %%
 midshelf_nitrate_monthly = xr.Dataset(
     {
-        "mean": midshelf_nitrate.groupby("time.month").mean(dim="time", skipna=True)[
-            "nitrate"
-        ],
-        "std": midshelf_nitrate.groupby("time.month").std(dim="time", skipna=True)[
-            "nitrate"
-        ],
+        "mean": midshelf_nitrate.groupby("time.month").mean(dim="time", skipna=True)["nitrate"],
+        "std": midshelf_nitrate.groupby("time.month").std(dim="time", skipna=True)["nitrate"],
         "count": midshelf_nitrate.groupby("time.month").count(dim="time")["nitrate"],
-    }
+    },
 )
-midshelf_nitrate_monthly["ci"] = (
-    midshelf_nitrate_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
-)
+midshelf_nitrate_monthly["ci"] = midshelf_nitrate_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
 
 # %%
 fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(7, 4))
@@ -1351,25 +1354,20 @@ fig.supylabel("Depth [$\\mathsf{m}$]")
 # )
 
 # %%
-composite_midshelf_nitrate_flux_monthly = (
-    midshelf_nitrate_monthly * composite_vel_monthly_cs
-)
+composite_midshelf_nitrate_flux_monthly = midshelf_nitrate_monthly * composite_vel_monthly_cs
 midshelf_velocity_nitrate_cov = xr.cov(
-    midshelf_nitrate["nitrate"], velocity_nh10["cs"], ["time"]
+    midshelf_nitrate["nitrate"],
+    velocity_nh10["cs"],
+    ["time"],
 )
 composite_midshelf_nitrate_flux_monthly["std"] = np.sqrt(
     (midshelf_nitrate_monthly["mean"] * composite_vel_monthly_cs["std"]) ** 2
     + (composite_vel_monthly_cs["mean"] * midshelf_nitrate_monthly["std"]) ** 2
-    + 2
-    * midshelf_nitrate_monthly["mean"]
-    * composite_vel_monthly_cs["mean"]
-    * midshelf_velocity_nitrate_cov
+    + 2 * midshelf_nitrate_monthly["mean"] * composite_vel_monthly_cs["mean"] * midshelf_velocity_nitrate_cov,
 )
 composite_midshelf_nitrate_flux_monthly["count"] = composite_vel_monthly_cs["count"]
-composite_midshelf_nitrate_flux_monthly = (
-    composite_midshelf_nitrate_flux_monthly.transpose(
-        *composite_vel_monthly_cs["count"].dims
-    )
+composite_midshelf_nitrate_flux_monthly = composite_midshelf_nitrate_flux_monthly.transpose(
+    *composite_vel_monthly_cs["count"].dims,
 )
 composite_midshelf_nitrate_flux_monthly["ci"] = (
     composite_midshelf_nitrate_flux_monthly["std"]
@@ -1380,7 +1378,7 @@ composite_midshelf_nitrate_flux_monthly["ci"] = (
 # %%
 fig, axs = plt.subplots(nrows=6, ncols=11, sharex=True, sharey=True, figsize=(12, 10))
 for i, d in enumerate(
-    composite_midshelf_nitrate_flux_monthly["month"].sel(month=slice(4, 9))
+    composite_midshelf_nitrate_flux_monthly["month"].sel(month=slice(4, 9)),
 ):
     for j, day in enumerate(days):
         data = composite_midshelf_nitrate_flux_monthly.sel(month=d, time=day)
@@ -1400,7 +1398,7 @@ for i, d in enumerate(
         # axs[i][j].set_xlim([-0.1, 0.1])
         if j == 0:
             axs[i][j].set_ylabel(
-                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})"
+                calendar.month_abbr[data["month"].values] + f" (N={np.nanmean(n):.0f})",
             )
         if i == 0:
             axs[i][j].set_title(f"{day} days")
@@ -1410,13 +1408,14 @@ fig.suptitle("Cross-shelf Nitrate Flux")
 
 # %%
 fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(5, 3))
-composite_midshelf_nitrate_flux_monthly_slice = (
-    composite_midshelf_nitrate_flux_monthly.sel(time=slice(-5, 5, 5), month=slice(4, 9))
+composite_midshelf_nitrate_flux_monthly_slice = composite_midshelf_nitrate_flux_monthly.sel(
+    time=slice(-5, 5, 5),
+    month=slice(4, 9),
 )
 
 for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
     for j, m in enumerate(
-        composite_midshelf_nitrate_flux_monthly_slice.sel(time=v)["month"]
+        composite_midshelf_nitrate_flux_monthly_slice.sel(time=v)["month"],
     ):
         data = composite_midshelf_nitrate_flux_monthly_slice.sel(time=v, month=m)
         axs[i].plot(
@@ -1494,7 +1493,9 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
     for j, t in enumerate(composite_midshelf_nitrate_flux_monthly["time"]):
         # 60 m to 80 m flux
         data = composite_midshelf_nitrate_flux_monthly.sel(
-            month=m, time=t, depth=slice(60, 80)
+            month=m,
+            time=t,
+            depth=slice(60, 80),
         )
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
@@ -1503,7 +1504,9 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
 
         # 20 m to 40 m flux
         data = composite_midshelf_nitrate_flux_monthly.sel(
-            month=m, time=t, depth=slice(20, 60)
+            month=m,
+            time=t,
+            depth=slice(20, 60),
         )
         mask = ~np.isnan(data["mean"])
         data = data.isel(depth=mask)
@@ -1524,14 +1527,20 @@ for i, m in enumerate(composite_midshelf_nitrate_flux_monthly["month"]):
 
 fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(5, 3))
 for i, m in enumerate(
-    composite_midshelf_nitrate_flux_monthly.sel(month=slice(4, 9))["month"]
+    composite_midshelf_nitrate_flux_monthly.sel(month=slice(4, 9))["month"],
 ):
     # data = composite_midshelf_nitrate_flux_monthly.sel(month=m)
     axs[0].plot(
-        days, flux_60_80[m - 1], color=cmap(i / 6), label=calendar.month_abbr[m.values]
+        days,
+        flux_60_80[m - 1],
+        color=cmap(i / 6),
+        label=calendar.month_abbr[m.values],
     )
     axs[1].plot(
-        days, flux_20_60[m - 1], color=cmap(i / 6), label=calendar.month_abbr[m.values]
+        days,
+        flux_20_60[m - 1],
+        color=cmap(i / 6),
+        label=calendar.month_abbr[m.values],
     )
 
 axs[0].minorticks_off()
@@ -1563,7 +1572,7 @@ cmap = cmap.from_list("cmap", cmap(np.linspace(0, 1, 11)), 11)
 # %%
 # fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(8, 4))
 for i, m in enumerate(
-    composite_midshelf_nitrate_flux_monthly.sel(month=slice(4, 9))["month"]
+    composite_midshelf_nitrate_flux_monthly.sel(month=slice(4, 9))["month"],
 ):
     data = composite_midshelf_nitrate_flux_monthly.sel(month=m)
     plt.plot(
@@ -1579,10 +1588,10 @@ velocity_nh10_flux = []
 for i, month in enumerate(range(4, 10)):
     velocity_nh10_flux.append(
         velocity_nh10.where(velocity_nh10["time.month"] == month, drop=True).cs
-        * midshelf_nitrate_monthly["mean"].sel(month=month)
+        * midshelf_nitrate_monthly["mean"].sel(month=month),
     )
 velocity_nh10_flux = xr.merge(
-    [v.to_dataset(name="nitrate_flux").drop_vars("month") for v in velocity_nh10_flux]
+    [v.to_dataset(name="nitrate_flux").drop_vars("month") for v in velocity_nh10_flux],
 )
 
 # %%
@@ -1590,12 +1599,7 @@ velocity_nh10_flux["nitrate_flux_depth_integrated"] = (
     ["time"],
     xr.apply_ufunc(
         lambda x, y: np.array(
-            [
-                np.trapz(yi[~np.isnan(yi)], x[~np.isnan(yi)])
-                if len(yi[~np.isnan(yi)]) > 10
-                else np.nan
-                for yi in y
-            ]
+            [np.trapz(yi[~np.isnan(yi)], x[~np.isnan(yi)]) if len(yi[~np.isnan(yi)]) > 10 else np.nan for yi in y],
         ),
         velocity_nh10_flux.depth.values,
         velocity_nh10_flux.nitrate_flux.values,
@@ -1605,7 +1609,9 @@ velocity_nh10_flux["nitrate_flux_depth_integrated"] = (
 
 # %%
 def lagged_correlation(
-    a: xr.DataArray, b: xr.DataArray, lags: NDArray
+    a: xr.DataArray,
+    b: xr.DataArray,
+    lags: NDArray,
 ) -> tuple[NDArray, NDArray, NDArray]:
     """Positive lags for b leading a, negative lags for a leading b.
 
@@ -1626,7 +1632,11 @@ def lagged_correlation(
         a_shift, b_shift = xr.align(a, b_shift)
         mask = ~np.isnan(a_shift) & ~np.isnan(b_shift)
         ccf = sm.tsa.ccf(
-            a_shift[mask], b_shift[mask], adjusted=True, nlags=1, alpha=0.05
+            a_shift[mask],
+            b_shift[mask],
+            adjusted=True,
+            nlags=1,
+            alpha=0.05,
         )
         corr[i] = ccf[0][0]
         confint[i] = ccf[1]
@@ -1645,8 +1655,7 @@ flux_wind_lag_correlation, confint, n = lagged_correlation(
 n_eff = np.nanmean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(tdelay, flux_wind_lag_correlation)
@@ -1672,8 +1681,7 @@ flux_wind_lag_correlation, confint, n = lagged_correlation(
 n_eff = np.nanmean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(tdelay, flux_wind_lag_correlation)
@@ -1699,8 +1707,7 @@ flux_wind_lag_correlation, confint, n = lagged_correlation(
 n_eff = np.nanmean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(tdelay, flux_wind_lag_correlation)
@@ -1726,8 +1733,7 @@ flux_wind_lag_correlation, confint, n = lagged_correlation(
 n_eff = np.nanmean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(tdelay, flux_wind_lag_correlation)
@@ -1750,14 +1756,15 @@ temp_flux, temp_inner, temp_mid = xr.align(
 )
 
 flux_nitrate_lag_correlation, confint, n = lagged_correlation(
-    temp_flux, (temp_inner.dndt * 7000 / 2), tdelay
+    temp_flux,
+    (temp_inner.dndt * 7000 / 2),
+    tdelay,
 )
 
 n_eff = np.mean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(tdelay, flux_nitrate_lag_correlation)
@@ -1776,15 +1783,14 @@ flux_nitrate_lag_correlation, confint, n = lagged_correlation(
 n_eff = np.mean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(tdelay, flux_nitrate_lag_correlation)
 plt.fill_between(tdelay, confint[:, 0], confint[:, 1], color="black", alpha=0.5)
 plt.xlabel("Lag [$\\mathsf{days}$]")
 plt.ylabel(
-    "Inner shelf Depth Average Nitrate - Depth Integrated Midshelf Nitrate Flux Cross Correlation"
+    "Inner shelf Depth Average Nitrate - Depth Integrated Midshelf Nitrate Flux Cross Correlation",
 )
 plt.axhline(rho_crit, color="k", ls="--")
 
@@ -1792,14 +1798,15 @@ plt.axhline(rho_crit, color="k", ls="--")
 # %%
 tdelay = np.arange(-20, 20)
 flux_dndt_lag_correlation, confint, n = lagged_correlation(
-    midshelf_nitrate.dndt, velocity_nh10_flux.nitrate_flux_depth_integrated, tdelay
+    midshelf_nitrate.dndt,
+    velocity_nh10_flux.nitrate_flux_depth_integrated,
+    tdelay,
 )
 
 n_eff = np.mean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(tdelay, flux_dndt_lag_correlation)
@@ -1815,7 +1822,8 @@ flux_dndt_lag_correlation.max()
 midshelf_nitrate_interp = xr.concat(
     [
         yi.interpolate_na(
-            "depth", fill_value=[yi.dropna("depth")[0], yi.dropna("depth")[-1]]
+            "depth",
+            fill_value=[yi.dropna("depth")[0], yi.dropna("depth")[-1]],
         )
         for yi in midshelf_nitrate.nitrate
         if yi.dropna("depth").size > 40
@@ -1823,23 +1831,23 @@ midshelf_nitrate_interp = xr.concat(
     "time",
 )
 cs_al_midnitr, midnitr_al_cs = xr.align(
-    velocity_nh10.cs.dropna("time", how="all"), midshelf_nitrate_interp
+    velocity_nh10.cs.dropna("time", how="all"),
+    midshelf_nitrate_interp,
 )
 midshelf_nitrate_flux_depth_integrated = xr.apply_ufunc(
     lambda x, y: np.array(
-        [np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)]) for yi in y]
+        [np.trapezoid(yi[~np.isnan(yi)], x[~np.isnan(yi)]) for yi in y],
     ),
     cs_al_midnitr.depth.values,
     (cs_al_midnitr * midnitr_al_cs).values,
 )
 midshelf_nitrate_flux_depth_integrated = xr.DataArray(
-    midshelf_nitrate_flux_depth_integrated, {"time": cs_al_midnitr.time}
+    midshelf_nitrate_flux_depth_integrated,
+    {"time": cs_al_midnitr.time},
 )
 
 # %%
-midshelf_nitrate_flux_depth_integrated = (
-    midshelf_nitrate_flux_depth_integrated.resample(time="1D").mean()
-)
+midshelf_nitrate_flux_depth_integrated = midshelf_nitrate_flux_depth_integrated.resample(time="1D").mean()
 
 # %%
 temp_flux, temp_monthly_flux = xr.align(
@@ -1887,7 +1895,10 @@ axs[1].legend(facecolor="white", frameon=True, framealpha=1)
 axs[2].axhline(0, ls="--", color="black")
 axs[2].plot(nitrate.time, nitrate.dndt * 7000 / 2, label="Inner shelf")
 axs[2].plot(
-    midshelf_nitrate.time, midshelf_nitrate.dndt * 13000, c="#BB5566", label="Midshelf"
+    midshelf_nitrate.time,
+    midshelf_nitrate.dndt * 13000,
+    c="#BB5566",
+    label="Midshelf",
 )
 axs[2].set_ylim(-50, 40)
 axs[2].set_ylabel("$\\partial N/\\partial t$\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]")
@@ -1921,7 +1932,7 @@ axs[3].plot(
 )
 axs[3].set_ylim(-50, 40)
 axs[3].set_ylabel(
-    "Crossshelf Nitrate Flux\n- Inner Shelf  $\\partial N/\\partial t$\n[$\\mathsf{mmol \\; m^{-3}}$]"
+    "Crossshelf Nitrate Flux\n- Inner Shelf  $\\partial N/\\partial t$\n[$\\mathsf{mmol \\; m^{-3}}$]",
 )
 axs[3].legend(facecolor="white", frameon=True, framealpha=1)
 axs[3].xaxis.set_major_formatter(mdates.DateFormatter("%b"))
@@ -1967,7 +1978,8 @@ axs[1].plot(
 )
 axs[1].set_ylim(-50, 40)
 axs[1].set_ylabel(
-    "Cross-shelf Nitrate Flux\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]", fontsize=18
+    "Cross-shelf Nitrate Flux\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]",
+    fontsize=18,
 )
 axs[1].legend(facecolor="white", frameon=True, framealpha=1, ncols=2, fontsize=16)
 
@@ -1982,7 +1994,8 @@ axs[2].plot(
 )
 axs[2].set_ylim(-50, 40)
 axs[2].set_ylabel(
-    "$\\partial N/\\partial t$\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]", fontsize=18
+    "$\\partial N/\\partial t$\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]",
+    fontsize=18,
 )
 axs[2].legend(facecolor="white", frameon=True, framealpha=1, ncols=2, fontsize=16)
 
@@ -2014,7 +2027,8 @@ axs[3].plot(
 )
 axs[3].set_ylim(-50, 40)
 axs[3].set_ylabel(
-    "Residual $\\epsilon$\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]", fontsize=18
+    "Residual $\\epsilon$\n[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]",
+    fontsize=18,
 )
 axs[3].legend(facecolor="white", frameon=True, framealpha=1, ncols=2, fontsize=16)
 axs[3].xaxis.set_major_formatter(mdates.DateFormatter("%b"))
@@ -2141,7 +2155,8 @@ plt.plot(broadscale.lon, broadscale.lat, ".")
 plt.axhline(nhl_lat)
 broadscale["transect_abbr"] = xr.DataArray(
     xr.apply_ufunc(
-        lambda d: [re.split("(\\d+)", str(s))[0] for s in d], broadscale.station.values
+        lambda d: [re.split("(\\d+)", str(s))[0] for s in d],
+        broadscale.station.values,
     ),
     dims="time",
 )
@@ -2177,52 +2192,41 @@ def bin_profiles(d, z):
 
 # %%
 transect_station = np.array(
-    [broadscale.transect_abbr.values, broadscale.transect.values]
+    [broadscale.transect_abbr.values, broadscale.transect.values],
 ).T.astype(str)
 transect_station = np.unique(transect_station, axis=0)
 exclude_transect = transect_station[transect_station[:, 1] == "nan"].T[0]
-transect_station = transect_station[
-    (transect_station[:, 1] != "nan") & (transect_station[:, 0] != "nan")
-]
+transect_station = transect_station[(transect_station[:, 1] != "nan") & (transect_station[:, 0] != "nan")]
 transect_station = dict(transect_station)
 transect_lats = dict(
     zip(
         transect_station.keys(),
         np.array(
             [
-                broadscale.where(broadscale.transect_abbr == ta, drop=True)
-                .lat.median()
-                .values
+                broadscale.where(broadscale.transect_abbr == ta, drop=True).lat.median().values
                 for ta in transect_station.keys()
-            ]
+            ],
         ),
-    )
+        strict=False,
+    ),
 )
 
 
 # %%
 stations = np.array(
-    [t for t in dict(zip(broadscale.station.values, broadscale.transect.values)).keys()]
+    [t for t in dict(zip(broadscale.station.values, broadscale.transect.values, strict=False)).keys()],
 )
-nhl_lat = (
-    broadscale.where(broadscale.transect == "Newport Hydrographic", drop=True)
-    .lat.median()
-    .data
-)
+nhl_lat = broadscale.where(broadscale.transect == "Newport Hydrographic", drop=True).lat.median().data
 t = "Newport Hydrographic"
 broadscale_binned = []
 depth = np.concatenate(
-    [np.arange(0, 300, 10), np.arange(300, 500, 50), np.arange(500, 4000, 100)]
+    [np.arange(0, 300, 10), np.arange(300, 500, 50), np.arange(500, 4000, 100)],
 )
 for s in tq(stations):
     if s != "nan" and re.split("(\\d+)", s)[0] not in exclude_transect:
         transect = transect_station[re.split("(\\d+)", s)[0]]
         transect_lat = transect_lats[re.split("(\\d+)", s)[0]]
-        lat = (
-            broadscale.where(broadscale.transect == transect, drop=True)
-            .lat.median()
-            .values
-        )
+        lat = broadscale.where(broadscale.transect == transect, drop=True).lat.median().values
         temp = broadscale.where(broadscale.station == s, drop=True)
         temp = bin_profiles(temp, depth)
         lon = temp.lon.median().values
@@ -2242,7 +2246,7 @@ len(
     xr.apply_ufunc(
         lambda d: [re.split(r"(\d+)", str(s))[0] for s in d],
         broadscale_binned.station.values,
-    )
+    ),
 )
 
 # %%
@@ -2261,7 +2265,7 @@ for t in transect_station.values():
     lats.append(lat)
 lats = np.array(lats)
 transect_station = dict(
-    np.array(list(transect_station.items()))[np.argsort(lats)][::-1]
+    np.array(list(transect_station.items()))[np.argsort(lats)][::-1],
 )
 lats = np.sort(lats)[::-1]
 lats
@@ -2271,14 +2275,14 @@ plt.plot(broadscale_binned.lon, broadscale_binned.lat, ".")
 
 # %%
 broadscale_binned.sel(
-    station=[s.startswith("NH") for s in broadscale_binned.station.values]
+    station=[s.startswith("NH") for s in broadscale_binned.station.values],
 )
 
 
 # %%
 def reshape_plots(fig, axs, r, c):
     gs = gridspec.GridSpec(r, c, fig)
-    for i, (ax, g) in enumerate(zip(axs, gs)):
+    for i, (ax, g) in enumerate(zip(axs, gs, strict=False)):
         ax.set_subplotspec(g)
 
 
@@ -2334,7 +2338,7 @@ cc = cycler(marker=["o", "X", "+", "*", "o", "X", "+", "*", "o", "X", "+"]) + cy
         "#EE6677",
         "#228833",
         "#CCBB44",
-    ]
+    ],
 )
 cc = cycler(
     color=[
@@ -2349,7 +2353,7 @@ cc = cycler(
         "#AA4499",
         "#DDDDDD",
         "#000000",
-    ]
+    ],
 ) * cycler(marker=["o"])
 cc = list(cc)
 
@@ -2379,8 +2383,8 @@ for i, mile in enumerate(station_miles):
             broadscale_ci = np.array(
                 [
                     std / np.sqrt(n) * distributions.t(n - 1).isf(0.025)
-                    for std, n in zip(broadscale_std, broadscale_count)
-                ]
+                    for std, n in zip(broadscale_std, broadscale_count, strict=False)
+                ],
             )
             cc_idx = list(transect_station.keys()).index(re.split("(\\d+)", stat)[0])
             if len(broadscale_mean) > 0:
@@ -2396,7 +2400,7 @@ for i, mile in enumerate(station_miles):
                         [
                             broadscale_mean - broadscale_ci,
                             broadscale_mean + broadscale_ci,
-                        ]
+                        ],
                     ),
                     np.stack([-broadscale_depth, -broadscale_depth]),
                     marker="|",
@@ -2413,39 +2417,30 @@ reshape_plots(fig, axs, 2, 6)
 handles = [hj for hi in handles for hj in hi]
 labels = [lj for li in labels for lj in li]
 labels, handles = np.array(
-    [(hand, lab) for hand, lab in dict(zip(labels, handles)).items()]
+    [(hand, lab) for hand, lab in dict(zip(labels, handles, strict=False)).items()],
 ).T
 handles = handles[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 labels = labels[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 axs[-1].legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5))
 [ax.set_ylim(-200, 0) for ax in axs]
-pass
 
 # %%
 cc = cycler(marker=["o", "X", "+", "*", "o", "X", "+", "*", "o", "X", "+"]) + cycler(
@@ -2461,7 +2456,7 @@ cc = cycler(marker=["o", "X", "+", "*", "o", "X", "+", "*", "o", "X", "+"]) + cy
         "#EE6677",
         "#228833",
         "#CCBB44",
-    ]
+    ],
 )
 cc = cycler(
     color=[
@@ -2476,7 +2471,7 @@ cc = cycler(
         "#AA4499",
         "#DDDDDD",
         "#000000",
-    ]
+    ],
 ) * cycler(marker=["o"])
 cc = list(cc)
 
@@ -2506,8 +2501,8 @@ for i, mile in enumerate(station_miles):
             broadscale_ci = np.array(
                 [
                     std / np.sqrt(n) * distributions.t(n - 1).isf(0.025)
-                    for std, n in zip(broadscale_std, broadscale_count)
-                ]
+                    for std, n in zip(broadscale_std, broadscale_count, strict=False)
+                ],
             )
             cc_idx = list(transect_station.keys()).index(re.split("(\\d+)", stat)[0])
             if len(broadscale_mean) > 0:
@@ -2523,7 +2518,7 @@ for i, mile in enumerate(station_miles):
                         [
                             broadscale_mean - broadscale_ci,
                             broadscale_mean + broadscale_ci,
-                        ]
+                        ],
                     ),
                     np.stack([-broadscale_depth, -broadscale_depth]),
                     marker="|",
@@ -2540,34 +2535,26 @@ reshape_plots(fig, axs, 2, 6)
 handles = [hj for hi in handles for hj in hi]
 labels = [lj for li in labels for lj in li]
 labels, handles = np.array(
-    [(hand, lab) for hand, lab in dict(zip(labels, handles)).items()]
+    [(hand, lab) for hand, lab in dict(zip(labels, handles, strict=False)).items()],
 ).T
 handles = handles[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 labels = labels[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 axs[-1].legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5))
@@ -2579,28 +2566,29 @@ axs[-1].legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5))
 # %%
 (
     broadscale_binned.sel(
-        station=[s.startswith("GH") for s in broadscale_binned.station.values]
+        station=[s.startswith("GH") for s in broadscale_binned.station.values],
     ).lat.mean()
     - broadscale_binned.sel(
-        station=[s.startswith("NH") for s in broadscale_binned.station.values]
+        station=[s.startswith("NH") for s in broadscale_binned.station.values],
     ).lat.mean()
 )
 
 # %%
 (
     broadscale_binned.sel(
-        station=[s.startswith("NH") for s in broadscale_binned.station.values]
+        station=[s.startswith("NH") for s in broadscale_binned.station.values],
     ).lat.mean()
     - broadscale_binned.sel(
-        station=[s.startswith("TH") for s in broadscale_binned.station.values]
+        station=[s.startswith("TH") for s in broadscale_binned.station.values],
     ).lat.mean()
 )
 
 # %%
-for (stat, trans), lat_rel in zip(transect_station.items(), lats_reldiff):
+for (stat, trans), lat_rel in zip(transect_station.items(), lats_reldiff, strict=False):
     if trans in labels:
         temp = broadscale_binned.where(
-            broadscale_binned.transect_abbr == stat, drop=True
+            broadscale_binned.transect_abbr == stat,
+            drop=True,
         )
         plt.plot(temp.lon, temp.lat, "-o", color=cmap(lat_rel), label=trans)
 
@@ -2615,10 +2603,10 @@ bathymetry = xr.open_mfdataset(
     os.path.join(
         notebook_dir,
         "../data/GEBCO/*.nc",
-    )
+    ),
 )
 bathymetry = bathymetry.isel(
-    dict(lat=util.find_nearest(bathymetry["lat"].values, 44.66))
+    dict(lat=util.find_nearest(bathymetry["lat"].values, 44.66)),
 )
 bathymetry = bathymetry.interp(dict(lon=np.linspace(-130, -123, int(1e6))))
 topo = bathymetry["elevation"].squeeze().values
@@ -2632,8 +2620,11 @@ lat = bathymetry.lat.values
 
 meters = np.nan * np.zeros(len(long))
 for i, lo in enumerate(long):
-    meters[i] = util.haversine(long[0], lat, long[i], lat) - util.haversine(
-        long[0], lat, coast.lon.values, lat
+    meters[i] = util.haversine(long[0], lat, lo, lat) - util.haversine(
+        long[0],
+        lat,
+        coast.lon.values,
+        lat,
     )
 
 long = long[meters > -100]
@@ -2676,16 +2667,20 @@ for i in tq(range(len(zf))):
 # %%
 # load NHL transects and compute distance from coastline in meters
 nhl_grid = xr.load_dataset(
-    "../../datasets/ship/Newport_Hydrographic_Line_Data_1997_2021/data_files/newport_hydrographic_line_gridded_sections.nc"
+    "../../datasets/ship/Newport_Hydrographic_Line_Data_1997_2021/data_files/newport_hydrographic_line_gridded_sections.nc",
 )
 nhl_grid = nhl_grid.squeeze()
 nhl_grid = nhl_grid.where(nhl_grid.pressure > 10)
 nhl_grid["meters"] = -util.haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 print(f"Total number of NHL transects: {len(nhl_grid.time)}")
 nhl_grid = nhl_grid.where(
-    ((nhl_grid["time.month"] > 3) & (nhl_grid["time.month"] < 11)), drop=True
+    ((nhl_grid["time.month"] > 3) & (nhl_grid["time.month"] < 11)),
+    drop=True,
 )
 print(f"Total number of summertime NHL transects: {len(nhl_grid.time)}")
 # linearly interpolate to find 25.8 isopycnal depth
@@ -2703,7 +2698,6 @@ for i, x in enumerate(tq(nhl_grid["meters"])):
                 pycno_depth[i][j] = inter(25.8)
             except ValueError:
                 pycno_depth[i][j] = np.nan
-                pass
 nhl_grid["pycno_depth"] = (["longitude", "time"], -pycno_depth)
 # nhl_grid = nhl_grid.where(nhl_grid.pycno_depth < -10)
 
@@ -2716,14 +2710,20 @@ H = np.nan * np.zeros(len(pycno_depth.T))
 H_err = np.nan * np.zeros(len(pycno_depth.T))
 
 nhl_grid["meters"] = -util.haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 
 for i, d in enumerate(tq(-pycno_depth.T)):
     mask = ~np.isnan(d)
     if len(d[mask]) > 20:
         (Zf[i], R[i], H[i]), cov = curve_fit(
-            util.pycno, nhl_grid["meters"][mask], d[mask], p0=[0, 50, 125]
+            util.pycno,
+            nhl_grid["meters"][mask],
+            d[mask],
+            p0=[0, 50, 125],
         )  # , bounds=([-np.inf, 0, 0], [np.inf, 1000, 2000])
         (Zf_err[i], R_err[i], H_err[i]) = np.sqrt(np.diagonal(cov))
 
@@ -2734,7 +2734,10 @@ nhl_grid["Zf_err"] = (["time"], Zf_err)
 
 nhl_grid = nhl_grid.resample(time="1D").median()
 nhl_grid["meters"] = -util.haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 
 mask = (~np.isnan(nhl_grid.H)) & (~np.isnan(nhl_grid.R)) & (~np.isnan(nhl_grid.Zf))
@@ -2743,14 +2746,20 @@ nhl_grid = nhl_grid.where(mask, drop=True)
 print(f"Total number of reasonable fits: {len(nhl_grid.time)}")
 
 nhl_grid["meters"] = -util.haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 
 fit_rmse = np.nan * np.empty(len(nhl_grid.time))
 for i, t in enumerate(nhl_grid.time):
     temp = nhl_grid.sel(time=t)
     residuals = temp.pycno_depth - util.pycno(
-        temp.meters.values, temp.Zf.values, temp.R.values, temp.H.values
+        temp.meters.values,
+        temp.Zf.values,
+        temp.R.values,
+        temp.H.values,
     )
     fit_rmse[i] = ((np.sum(residuals**2) / (residuals.size - 2)) ** 0.5).values
 
@@ -2769,7 +2778,10 @@ fit_rmse = np.nan * np.empty(len(nhl_grid.time))
 for i, t in enumerate(nhl_grid.time):
     temp = nhl_grid.sel(time=t)
     residuals = temp.pycno_depth - util.pycno(
-        temp.meters.values, temp.Zf.values, temp.R.values, temp.H.values
+        temp.meters.values,
+        temp.Zf.values,
+        temp.R.values,
+        temp.H.values,
     )
     fit_rmse[i] = ((np.sum(residuals**2) / (residuals.size - 2)) ** 0.5).values
 
@@ -2800,9 +2812,7 @@ N = 0
 fig, axs = plt.subplots(5, 5, figsize=(20, 30), sharex=True, sharey=True)
 for r in tq(range(rows)):
     for c in range(cols):
-        mask = (nhl_grid["time"] >= trange[5 * r + c % 5]) & (
-            nhl_grid["time"] < trange[5 * r + c % 5] + tdelta
-        )
+        mask = (nhl_grid["time"] >= trange[5 * r + c % 5]) & (nhl_grid["time"] < trange[5 * r + c % 5] + tdelta)
         for i, (t, d, Zf, R, H) in enumerate(
             zip(
                 nhl_grid["time"][mask].values,
@@ -2810,7 +2820,8 @@ for r in tq(range(rows)):
                 nhl_grid["Zf"][mask].values,
                 nhl_grid["R"][mask].values,
                 nhl_grid["H"][mask].values,
-            )
+                strict=False,
+            ),
         ):
             mask = ~np.isnan(d) & (nhl_grid.meters.T[0] < -10)
             ymd = util.dt2cal(t)[0:3]
@@ -2834,7 +2845,7 @@ for r in tq(range(rows)):
         axs[r][c].plot(meters, topo, color="black")
         handles, labels = axs[r][c].get_legend_handles_labels()
         by_label = dict(
-            zip(labels, handles)
+            zip(labels, handles, strict=False),
         )  # dicts can't have duplicate keys, avoids duplicate legend entries
         axs[r][c].legend(by_label.values(), by_label.keys(), loc="lower right")
         axs[r][c].set_ylim([-130, 5])
@@ -2846,13 +2857,7 @@ N
 
 # %%
 fig, axs = plt.subplots(3, 1, sharex=True)
-mask = (
-    (nhl_grid.Zf < 100)
-    & (nhl_grid.Zf > -100)
-    & (nhl_grid.R < 100)
-    & (nhl_grid.R > -100)
-    & (nhl_grid.H < 200)
-)
+mask = (nhl_grid.Zf < 100) & (nhl_grid.Zf > -100) & (nhl_grid.R < 100) & (nhl_grid.R > -100) & (nhl_grid.H < 200)
 axs[0].plot(nhl_grid.time[mask], nhl_grid.Zf[mask], ".")
 # axs[0].plot(nhl_grid.time, nhl_grid.Zf, '.')
 # axs[0].set_ylim(-75, 125)
@@ -3062,9 +3067,7 @@ bbox = dict(boxstyle="round", fc="w")
 d = nhl_grid.isel(time=15)
 mask = ~np.isnan(d)
 axs[2].fill_between(
-    np.arange(-60, 5)[
-        util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
-    ],
+    np.arange(-60, 5)[util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0],
     util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values)[
         util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
     ],
@@ -3072,9 +3075,7 @@ axs[2].fill_between(
     color="lightblue",
 )
 axs[2].fill_between(
-    np.arange(-60, 5)[
-        util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
-    ],
+    np.arange(-60, 5)[util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0],
     -1000,
     util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values)[
         util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
@@ -3082,9 +3083,7 @@ axs[2].fill_between(
     color="darkblue",
 )
 axs[2].fill_between(
-    np.arange(-60, 5)[
-        util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) >= -1
-    ],
+    np.arange(-60, 5)[util.pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) >= -1],
     -1000,
     0,
     color="darkblue",
@@ -3158,16 +3157,15 @@ ax.set_xlabel("$\\sigma_{\\theta}$ [$\\mathsf{kg \\; m^{-3}}$]")
 ax.set_ylabel("Nitrate Conc. [$\\mathsf{\\mu M}$]")
 handles, labels = plt.gca().get_legend_handles_labels()
 by_label = dict(
-    zip(labels, handles)
+    zip(labels, handles, strict=False),
 )  # dicts can't have duplicate keys, avoids duplicate legend entries
 ax.legend(by_label.values(), by_label.keys())
 print(
-    f"Mean N below 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density < 25.8).nitrate)}"
+    f"Mean N below 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density < 25.8).nitrate)}",
 )
 print(
-    f"Mean N above 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density > 25.8).nitrate)}"
+    f"Mean N above 25.8 sigma: {np.nanmean(nitrate.where(nitrate.density > 25.8).nitrate)}",
 )
-pass
 
 # %% [markdown]
 # ## Nitrate and Wind Time Series
@@ -3179,7 +3177,12 @@ fig, axs = plt.subplots(2, 1, figsize=(7, 4.5), sharex=True, layout="constrained
 temp = wind.where(wind["time.year"] == 2021, drop=True)
 (ln1,) = axs[0].plot(temp.time, temp.coare_y, label="Stress", lw=3, zorder=1.8)
 (ln2,) = axs[0].plot(
-    temp.time, temp.w5d, color="#DDAA33", label="$W_{5d}$", lw=3, zorder=1.8
+    temp.time,
+    temp.w5d,
+    color="#DDAA33",
+    label="$W_{5d}$",
+    lw=3,
+    zorder=1.8,
 )
 axs[0].axhline(0, ls="-", lw=2, color="black", zorder=1.5)
 axs[0].set_ylim(-0.25, 0.25)
@@ -3199,7 +3202,10 @@ deployment = np.arange(15, 20, 1)
 temp = nitrate.where(nitrate["time.year"] == 2021, drop=True)
 
 cmap = cmo.tools.crop_by_percent(
-    cmo.deep, 10, which="min", N=len(temp.depth.where(temp.depth < 21.5, drop=True))
+    cmo.deep,
+    10,
+    which="min",
+    N=len(temp.depth.where(temp.depth < 21.5, drop=True)),
 )
 cdict = cmo.tools.get_dict(cmap, N=len(temp.depth.where(temp.depth < 21.5, drop=True)))
 deep = LinearSegmentedColormap("cmap", cdict)
@@ -3230,7 +3236,10 @@ fig.align_ylabels(axs)
 
 # plt.tight_layout()
 deep_r = cmo.tools.crop_by_percent(
-    cmo.deep_r, 10, which="max", N=len(temp.depth.where(temp.depth < 21.5, drop=True))
+    cmo.deep_r,
+    10,
+    which="max",
+    N=len(temp.depth.where(temp.depth < 21.5, drop=True)),
 )
 cax = fig.add_axes(
     rect=(
@@ -3238,7 +3247,7 @@ cax = fig.add_axes(
         axs[1].get_position().y0,
         0.015,
         axs[1].get_position().height,
-    )
+    ),
 )
 scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-20, vmax=0))
 cbar = fig.colorbar(scm, cax=cax, ax=axs, fraction=0.01, extend="min")
@@ -3296,7 +3305,11 @@ def plot_wind_velocity_nitrate_time_series(
     fig.align_ylabels(axs)
     axs[0, 0].plot(wind.time, wind.coare_y, "--", label="Stress", zorder=1.8)
     axs[0, 0].plot(
-        wind.time, wind.w5d, color="#DDAA33", label=r"$\mathrm{W_{5d}}$", zorder=1.8
+        wind.time,
+        wind.w5d,
+        color="#DDAA33",
+        label=r"$\mathrm{W_{5d}}$",
+        zorder=1.8,
     )
     axs[0, 0].axhline(0, ls="-", lw=2, color="black", zorder=1.5)
     axs[0, 0].set_ylim(-0.25, 0.25)
@@ -3307,7 +3320,10 @@ def plot_wind_velocity_nitrate_time_series(
         0.05,
         "Upwelling\nFavorable",
         bbox=dict(
-            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+            facecolor="white",
+            alpha=1,
+            edgecolor="white",
+            boxstyle="round,pad=0.",
         ),
         transform=axs[0, 0].transAxes,
         va="bottom",
@@ -3319,7 +3335,10 @@ def plot_wind_velocity_nitrate_time_series(
         0.95,
         "Downwelling\nFavorable",
         bbox=dict(
-            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+            facecolor="white",
+            alpha=1,
+            edgecolor="white",
+            boxstyle="round,pad=0.",
         ),
         transform=axs[0, 0].transAxes,
         va="top",
@@ -3328,7 +3347,11 @@ def plot_wind_velocity_nitrate_time_series(
     )
     axs[0, 0].set_ylabel("Along-shelf\nWind Stress [$\\mathsf{N\\;m^{-2}}$]")
     axs[0, 0].legend(
-        ncols=2, loc="upper right", frameon=True, framealpha=1, columnspacing=1
+        ncols=2,
+        loc="upper right",
+        frameon=True,
+        framealpha=1,
+        columnspacing=1,
     )
 
     axs[1, 0].axhline(0, zorder=1.5, color="k")
@@ -3347,14 +3370,21 @@ def plot_wind_velocity_nitrate_time_series(
     )
     axs[1, 0].set_ylabel("Cross-shelf\nVelocity [$\\mathsf{m \\; s^{-1}}$]")
     axs[1, 0].legend(
-        ncols=2, loc="upper right", frameon=True, framealpha=1, columnspacing=1
+        ncols=2,
+        loc="upper right",
+        frameon=True,
+        framealpha=1,
+        columnspacing=1,
     )
     axs[1, 0].text(
         0.02,
         0.05,
         "Offshore",
         bbox=dict(
-            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+            facecolor="white",
+            alpha=1,
+            edgecolor="white",
+            boxstyle="round,pad=0.",
         ),
         transform=axs[1, 0].transAxes,
         va="bottom",
@@ -3366,7 +3396,10 @@ def plot_wind_velocity_nitrate_time_series(
         0.95,
         "Onshore",
         bbox=dict(
-            facecolor="white", alpha=1, edgecolor="white", boxstyle="round,pad=0."
+            facecolor="white",
+            alpha=1,
+            edgecolor="white",
+            boxstyle="round,pad=0.",
         ),
         transform=axs[1, 0].transAxes,
         va="top",
@@ -3384,13 +3417,14 @@ def plot_wind_velocity_nitrate_time_series(
         N=len(inner_nitrate.depth.where(inner_nitrate.depth < 25, drop=True)),
     )
     cdict = cmo.tools.get_dict(
-        cmap, N=len(inner_nitrate.depth.where(inner_nitrate.depth < 25, drop=True))
+        cmap,
+        N=len(inner_nitrate.depth.where(inner_nitrate.depth < 25, drop=True)),
     )
     deep = LinearSegmentedColormap("cmap", cdict)
     for i, d in enumerate(inner_nitrate.depth):
         for j, dep in enumerate(deployment):
             temp = inner_nitrate.where(inner_nitrate.deployment == dep).where(
-                inner_nitrate.nitrate < 38
+                inner_nitrate.nitrate < 38,
             )
             axs[0, 1].plot(
                 temp.sel(depth=d).time,
@@ -3406,7 +3440,10 @@ def plot_wind_velocity_nitrate_time_series(
     axs[0, 1].set_ylabel("Inshore Nitrate\nConc. [$\\mathsf{mmol \\; m^{-3}}$]")
     # fig.align_ylabels(axs)
     deep_r = cmo.tools.crop_by_percent(
-        cmo.deep_r, 10, which="max", N=len(temp.depth.where(temp.depth < 25, drop=True))
+        cmo.deep_r,
+        10,
+        which="max",
+        N=len(temp.depth.where(temp.depth < 25, drop=True)),
     )
     cax = fig.add_axes(
         rect=(
@@ -3414,7 +3451,7 @@ def plot_wind_velocity_nitrate_time_series(
             axs[0, 1].get_position().y0 + 0.05,
             0.015,
             axs[0, 1].get_position().height,
-        )
+        ),
     )
     scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-20, vmax=0))
     cbar = fig.colorbar(scm, cax=cax, fraction=0.01, extend="min")
@@ -3426,7 +3463,8 @@ def plot_wind_velocity_nitrate_time_series(
     deployment = np.unique(midshelf_nitrate.deployment)
     deployment = deployment[~np.isnan(deployment)]
     midshelf_nitrate = midshelf_nitrate.where(
-        midshelf_nitrate["time.year"] == year, drop=True
+        midshelf_nitrate["time.year"] == year,
+        drop=True,
     )
     cmap = cmo.tools.crop_by_percent(
         cmo.deep,
@@ -3442,9 +3480,7 @@ def plot_wind_velocity_nitrate_time_series(
     for i, d in enumerate(midshelf_nitrate.depth):
         for j, dep in enumerate(deployment):
             temp = midshelf_nitrate.where(cond=midshelf_nitrate.deployment == dep)
-            if (len(temp_dep.time) > 0) & (
-                ~np.all(np.isnan(temp.sel(depth=d).nitrate))
-            ):
+            if (len(temp_dep.time) > 0) & (~np.all(np.isnan(temp.sel(depth=d).nitrate))):
                 axs[1, 1].plot(
                     temp.sel(depth=d).time,
                     temp.sel(depth=d).nitrate,
@@ -3457,7 +3493,10 @@ def plot_wind_velocity_nitrate_time_series(
     axs[1, 1].set_yticks([0, 10, 20, 30, 40])
     axs[1, 1].set_ylabel("Midshelf Nitrate\nConc. [$\\mathsf{mmol \\; m^{-3}}$]")
     deep_r = cmo.tools.crop_by_percent(
-        cmo.deep_r, 10, which="max", N=len(temp.depth.where(temp.depth < 80, drop=True))
+        cmo.deep_r,
+        10,
+        which="max",
+        N=len(temp.depth.where(temp.depth < 80, drop=True)),
     )
     cax = fig.add_axes(
         rect=(
@@ -3465,7 +3504,7 @@ def plot_wind_velocity_nitrate_time_series(
             axs[1, 1].get_position().y0,
             0.015,
             axs[1, 1].get_position().height,
-        )
+        ),
     )
     scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-80, vmax=0))
     cbar = fig.colorbar(scm, cax=cax, fraction=0.01, extend="min")
@@ -3486,7 +3525,8 @@ def plot_wind_velocity_nitrate_time_series(
     if save:
         plt.savefig(
             os.path.join(
-                notebook_dir, f"../manuscript/si/wind-nitrate-time-series-{year}.pdf"
+                notebook_dir,
+                f"../manuscript/si/wind-nitrate-time-series-{year}.pdf",
             ),
             format="pdf",
             bbox_inches="tight",
@@ -3497,7 +3537,12 @@ def plot_wind_velocity_nitrate_time_series(
 # %%
 for i in range(2014, 2025):
     plot_wind_velocity_nitrate_time_series(
-        wind, velocity_nh10, nitrate, midshelf_nitrate, i, save=True
+        wind,
+        velocity_nh10,
+        nitrate,
+        midshelf_nitrate,
+        i,
+        save=True,
     )
 
 # %%
@@ -3508,7 +3553,11 @@ temp = wind.where(wind["time.year"] == 2021, drop=True)
 fig.align_ylabels(axs)
 axs[0, 0].plot(temp.time, temp.coare_y, "--", label="Stress", zorder=1.8)
 axs[0, 0].plot(
-    temp.time, temp.w5d, color="#DDAA33", label=r"$\mathrm{W_{5d}}$", zorder=1.8
+    temp.time,
+    temp.w5d,
+    color="#DDAA33",
+    label=r"$\mathrm{W_{5d}}$",
+    zorder=1.8,
 )
 axs[0, 0].axhline(0, ls="-", lw=2, color="black", zorder=1.5)
 axs[0, 0].set_ylim(-0.25, 0.25)
@@ -3536,7 +3585,11 @@ axs[0, 0].text(
 )
 axs[0, 0].set_ylabel("Along-shelf\nWind Stress [$\\mathsf{N\\;m^{-2}}$]")
 axs[0, 0].legend(
-    ncols=2, loc="upper right", frameon=True, framealpha=1, columnspacing=1
+    ncols=2,
+    loc="upper right",
+    frameon=True,
+    framealpha=1,
+    columnspacing=1,
 )
 
 
@@ -3556,7 +3609,11 @@ axs[1, 0].plot(
 )
 axs[1, 0].set_ylabel("Cross-shelf\nVelocity [$\\mathsf{m \\; s^{-1}}$]")
 axs[1, 0].legend(
-    ncols=2, loc="upper right", frameon=True, framealpha=1, columnspacing=1
+    ncols=2,
+    loc="upper right",
+    frameon=True,
+    framealpha=1,
+    columnspacing=1,
 )
 axs[1, 0].text(
     0.02,
@@ -3583,7 +3640,10 @@ axs[1, 0].text(
 deployment = np.arange(15, 20, 1)
 temp = nitrate.where(nitrate["time.year"] == 2021, drop=True)
 cmap = cmo.tools.crop_by_percent(
-    cmo.deep, 10, which="min", N=len(temp.depth.where(temp.depth < 21.5, drop=True))
+    cmo.deep,
+    10,
+    which="min",
+    N=len(temp.depth.where(temp.depth < 21.5, drop=True)),
 )
 cdict = cmo.tools.get_dict(cmap, N=len(temp.depth.where(temp.depth < 21.5, drop=True)))
 deep = LinearSegmentedColormap("cmap", cdict)
@@ -3605,7 +3665,10 @@ axs[0, 1].set_yticks([0, 10, 20, 30, 40])
 axs[0, 1].set_ylabel("Inshore Nitrate\nConc. [$\\mathsf{mmol \\; m^{-3}}$]")
 # fig.align_ylabels(axs)
 deep_r = cmo.tools.crop_by_percent(
-    cmo.deep_r, 10, which="max", N=len(temp.depth.where(temp.depth < 21.5, drop=True))
+    cmo.deep_r,
+    10,
+    which="max",
+    N=len(temp.depth.where(temp.depth < 21.5, drop=True)),
 )
 cax = fig.add_axes(
     rect=(
@@ -3613,7 +3676,7 @@ cax = fig.add_axes(
         axs[0, 1].get_position().y0 + 0.05,
         0.015,
         axs[0, 1].get_position().height,
-    )
+    ),
 )
 scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-20, vmax=0))
 cbar = fig.colorbar(scm, cax=cax, fraction=0.01, extend="min")
@@ -3627,7 +3690,10 @@ cbar.set_label("Depth [m]", labelpad=10, rotation=270)
 deployment = np.unique(midshelf_nitrate.deployment)
 temp = midshelf_nitrate.where(midshelf_nitrate["time.year"] == 2021, drop=True)
 cmap = cmo.tools.crop_by_percent(
-    cmo.deep, 10, which="min", N=len(temp.depth.where(temp.depth < 21.5, drop=True))
+    cmo.deep,
+    10,
+    which="min",
+    N=len(temp.depth.where(temp.depth < 21.5, drop=True)),
 )
 cdict = cmo.tools.get_dict(cmap, N=len(temp.depth.where(temp.depth < 21.5, drop=True)))
 deep = LinearSegmentedColormap("cmap", cdict)
@@ -3647,7 +3713,10 @@ axs[1, 1].set_ylim(0, 40)
 axs[1, 1].set_yticks([0, 10, 20, 30, 40])
 axs[1, 1].set_ylabel("Midshelf Nitrate\nConc. [$\\mathsf{mmol \\; m^{-3}}$]")
 deep_r = cmo.tools.crop_by_percent(
-    cmo.deep_r, 10, which="max", N=len(temp.depth.where(temp.depth < 21.5, drop=True))
+    cmo.deep_r,
+    10,
+    which="max",
+    N=len(temp.depth.where(temp.depth < 21.5, drop=True)),
 )
 cax = fig.add_axes(
     rect=(
@@ -3655,7 +3724,7 @@ cax = fig.add_axes(
         axs[1, 1].get_position().y0,
         0.015,
         axs[1, 1].get_position().height,
-    )
+    ),
 )
 scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-80, vmax=0))
 cbar = fig.colorbar(scm, cax=cax, fraction=0.01, extend="min")
@@ -3688,12 +3757,14 @@ np.isin(wind["time.month"], [4, 5, 6, 7, 8, 9])
 
 # %%
 vel_time = velocity_nh10.where(
-    velocity_nh10["time.month"].isin([4, 5, 6, 7, 8, 9]), drop=True
+    velocity_nh10["time.month"].isin([4, 5, 6, 7, 8, 9]),
+    drop=True,
 ).time
 wind_al_vel, vel_al_wind = xr.align(
     wind.where(wind["time.month"].isin([4, 5, 6, 7, 8, 9]), drop=True),
     velocity_nh10.where(
-        velocity_nh10["time.month"].isin([4, 5, 6, 7, 8, 9]), drop=True
+        velocity_nh10["time.month"].isin([4, 5, 6, 7, 8, 9]),
+        drop=True,
     ),
 )
 
@@ -3701,14 +3772,15 @@ wind_al_vel, vel_al_wind = xr.align(
 # %%
 lags = np.arange(-10, 11)
 corr, confint, n = lagged_correlation(
-    wind_al_vel.coare_y, vel_al_wind.cs.sel(depth=70), lags
+    wind_al_vel.coare_y,
+    vel_al_wind.cs.sel(depth=70),
+    lags,
 )
 
 n_eff = np.nanmean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(lags, corr)
@@ -3720,14 +3792,15 @@ plt.axhline(-rho_crit, color="k", ls="--")
 # %%
 lags = np.arange(-10, 11)
 corr, confint, n = lagged_correlation(
-    wind_al_vel.coare_y, vel_al_wind.cs.sel(depth=30), lags
+    wind_al_vel.coare_y,
+    vel_al_wind.cs.sel(depth=30),
+    lags,
 )
 
 n_eff = np.nanmean(n) / 11
 alpha = 0.05
 rho_crit = np.sqrt(
-    distributions.f.isf(alpha, 1, n_eff - 2)
-    / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2))
+    distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
 )
 
 plt.plot(lags, corr)
@@ -3746,7 +3819,8 @@ for i, d in enumerate([30, 70]):
     )
 
 scm = plt.cm.ScalarMappable(
-    cmap=cmap, norm=plt.Normalize(vmin=0, vmax=vel_al_wind.depth.max())
+    cmap=cmap,
+    norm=plt.Normalize(vmin=0, vmax=vel_al_wind.depth.max()),
 )
 
 cmap = cmap.from_list(cmo.dense, cmap(np.linspace(0, 1, 11)), 11)
@@ -3803,12 +3877,12 @@ xp = xp[xp_idx]
 mod_nda_idx = mod_nda[xp_idx]
 mod_nda_interp = np.interp(wind_al_nitrate[wind_use], xp, mod_nda_idx)
 mask = ~np.isnan(mod_nda_interp) & ~np.isnan(
-    nitrate_al_wind["nitrate"].median(dim="depth", skipna=True)
+    nitrate_al_wind["nitrate"].median(dim="depth", skipna=True),
 )
 ols_fit = sm.OLS(
     mod_nda_interp[mask],
     sm.add_constant(
-        (nitrate_al_wind["nitrate"].median(dim="depth", skipna=True)[mask]).values
+        (nitrate_al_wind["nitrate"].median(dim="depth", skipna=True)[mask]).values,
     ),
 ).fit()
 bbox = dict(boxstyle="round", fc="w")
@@ -3842,18 +3916,13 @@ for i, t in enumerate(tq(tdelay)):
             continue
         fout[j] = simpson(temp[mask], x=wind["day_num"].values[: j + 1][mask])
     temp = xr.Dataset(
-        data_vars=dict(wkd=(["time"], fout)), coords=dict(time=wind["time"])
+        data_vars=dict(wkd=(["time"], fout)),
+        coords=dict(time=wind["time"]),
     )
     temp_wind, temp_nhl = xr.align(temp, nhl_grid)
     m = util.dt2cal(temp_nhl["time"].values).T[1]
     mask = (temp_nhl["Zf"] < 100) & (temp_nhl["Zf"] > -100)
-    summer = (
-        (m >= 4)
-        & (m <= 9)
-        & (mask)
-        & (~np.isnan(temp_wind.wkd))
-        & (~np.isnan(temp_nhl.Zf))
-    )
+    summer = (m >= 4) & (m <= 9) & (mask) & (~np.isnan(temp_wind.wkd)) & (~np.isnan(temp_nhl.Zf))
     wkd_correlation_zf[i] = sm.tsa.stattools.ccf(
         temp_wind["wkd"][summer].values,
         temp_nhl["Zf"][summer].values,
@@ -3878,7 +3947,8 @@ for i, t in enumerate(tq(tdelay)):
             continue
         fout[j] = simpson(temp[mask], x=wind["day_num"].values[: j + 1][mask])
     temp = xr.Dataset(
-        data_vars=dict(wkd=(["time"], fout)), coords=dict(time=wind["time"])
+        data_vars=dict(wkd=(["time"], fout)),
+        coords=dict(time=wind["time"]),
     )
     temp_nitrate, temp_wind = xr.align(nitrate.depth_integrated_nitrate, temp)
     temp_wind = temp_wind["wkd"]
@@ -3886,7 +3956,10 @@ for i, t in enumerate(tq(tdelay)):
     mask = ~np.isnan(temp_nitrate) & ~np.isnan(temp_wind)
     summer = (m >= 4) & (m <= 9) & (mask)
     wkd_correlation_n[i - 1] = sm.tsa.stattools.ccf(
-        temp_nitrate[summer].values, temp_wind[summer].values, adjusted=True, nlags=1
+        temp_nitrate[summer].values,
+        temp_wind[summer].values,
+        adjusted=True,
+        nlags=1,
     )[0]
 
 # %%
@@ -3982,7 +4055,13 @@ plt.annotate(
     arrowprops=dict(arrowstyle="->", color="k"),
 )
 plt.annotate(
-    "Mid-Shelf", xy=(-9, -25), fontsize=10, bbox=None, color="k", rotation=0, ha="right"
+    "Mid-Shelf",
+    xy=(-9, -25),
+    fontsize=10,
+    bbox=None,
+    color="k",
+    rotation=0,
+    ha="right",
 )
 bbox = dict(boxstyle="larrow,pad=0.3", fc="w", ec="k", lw=2)
 # plt.annotate(
@@ -4013,7 +4092,12 @@ plt.xlabel("Distance from Coast")
 plt.ylabel("Depth")
 # plt.gca().set_aspect(1)
 plt.scatter(
-    [-24, -30, -36], [20, 20, 20], s=500, edgecolors="black", c="white", linewidths=2
+    [-24, -30, -36],
+    [20, 20, 20],
+    s=500,
+    edgecolors="black",
+    c="white",
+    linewidths=2,
 )
 plt.scatter([-24, -30, -36], [20, 20, 20], s=100, c="black")
 plt.annotate(
@@ -4029,7 +4113,8 @@ plt.axvline(-7, 0.42, 0.75, c="k", ls="--", lw=3)
 plt.axvline(-20, 0.24, 0.75, c="k", ls="--", lw=3)
 # plt.scatter([-20], [20], s=[100])
 plt.savefig(
-    os.path.join(notebook_dir, "../manuscript/2d-upwelling-schematic.pdf"), format="pdf"
+    os.path.join(notebook_dir, "../manuscript/2d-upwelling-schematic.pdf"),
+    format="pdf",
 )
 
 # %% [markdown]
@@ -4037,22 +4122,23 @@ plt.savefig(
 
 # %%
 optaa = xr.load_dataset(
-    os.path.join(notebook_dir, "../data/CE01ISSM/ce01issm_optaa_processed.nc")
+    os.path.join(notebook_dir, "../data/CE01ISSM/ce01issm_optaa_processed.nc"),
 )
 flort = xr.load_dataset(
-    os.path.join(notebook_dir, "../data/CE01ISSM/ce01issm_flort_processed.nc")
+    os.path.join(notebook_dir, "../data/CE01ISSM/ce01issm_flort_processed.nc"),
 )
 
 flort = flort.drop_dims("stats")
 optaa_al, flort_al = xr.align(
-    optaa.drop_duplicates("time"), flort.drop_duplicates("time")
+    optaa.drop_duplicates("time"),
+    flort.drop_duplicates("time"),
 )
 
 # %%
 years = np.arange(np.datetime64("2017"), np.datetime64("2024"), np.timedelta64(1, "Y"))
 # years_str = [str(year) for year in years]
 fig, axs = plt.subplots((len(years) - 1) // 2, 2, figsize=(10, 7.5), sharey=True)
-for i, (ts, te, ax) in enumerate(zip(years[:-1], years[1:], axs.flatten())):
+for i, (ts, te, ax) in enumerate(zip(years[:-1], years[1:], axs.flatten(), strict=False)):
     # print(ts, te)
     temp = optaa.where((optaa.time > ts) & (optaa.time < te), drop=True)
     temp = temp.sortby("time")
@@ -4068,7 +4154,7 @@ for i, (ts, te, ax) in enumerate(zip(years[:-1], years[1:], axs.flatten())):
         [
             np.datetime64(f"{years[i]!s}-04-01"),
             np.datetime64(f"{years[i]!s}-09-30"),
-        ]
+        ],
     )
     ax.set_ylim([0, 25])
     ax.annotate(f"{ts}", xy=(0.05, 0.6), xytext=(0.05, 0.6), xycoords="axes fraction")
@@ -4083,24 +4169,13 @@ fig.supylabel("Estimated Chlorophyll [$\\mathrm{mg \\; m^{-3} }$]")
 # %%
 ts = np.datetime64("2021")
 te = np.datetime64("2022")
-temp1 = (
-    flort.where((flort.time > ts) & (flort.time < te))
-    .sortby("time")
-    .resample(time="1D")
-    .mean()
-)
-temp2 = (
-    optaa.where((optaa.time > ts) & (optaa.time < te))
-    .sortby("time")
-    .resample(time="1D")
-    .mean()
-)
+temp1 = flort.where((flort.time > ts) & (flort.time < te)).sortby("time").resample(time="1D").mean()
+temp2 = optaa.where((optaa.time > ts) & (optaa.time < te)).sortby("time").resample(time="1D").mean()
 chloro = np.nanmean(
-    [temp1.estimated_chlorophyll.values, temp2.estimated_chlorophyll.values], axis=0
+    [temp1.estimated_chlorophyll.values, temp2.estimated_chlorophyll.values],
+    axis=0,
 )
-nitr = (
-    nitrate.where((nitrate.time > ts) & (nitrate.time < te)).resample(time="1D").mean()
-)
+nitr = nitrate.where((nitrate.time > ts) & (nitrate.time < te)).resample(time="1D").mean()
 fig, axs = plt.subplots(3, 1, figsize=(6, 4), sharex=True)
 # [axs[0].axvline(cw.time.values[5], color='gray') for cw in composite_wind_events]
 
@@ -4157,24 +4232,13 @@ axs[2].set_ylabel("7 meter\nChlorophyll [$\\mathsf{mg \\; m^{-3}}$]")
 # %%
 ts = np.datetime64("2021")
 te = np.datetime64("2022")
-temp1 = (
-    flort.where((flort.time > ts) & (flort.time < te))
-    .sortby("time")
-    .resample(time="1D")
-    .mean()
-)
-temp2 = (
-    optaa.where((optaa.time > ts) & (optaa.time < te))
-    .sortby("time")
-    .resample(time="1D")
-    .mean()
-)
+temp1 = flort.where((flort.time > ts) & (flort.time < te)).sortby("time").resample(time="1D").mean()
+temp2 = optaa.where((optaa.time > ts) & (optaa.time < te)).sortby("time").resample(time="1D").mean()
 chloro = np.nanmean(
-    [temp1.estimated_chlorophyll.values, temp2.estimated_chlorophyll.values], axis=0
+    [temp1.estimated_chlorophyll.values, temp2.estimated_chlorophyll.values],
+    axis=0,
 )
-nitr = (
-    nitrate.where((nitrate.time > ts) & (nitrate.time < te)).resample(time="1D").mean()
-)
+nitr = nitrate.where((nitrate.time > ts) & (nitrate.time < te)).resample(time="1D").mean()
 fig, axs = plt.subplots(3, 1, figsize=(6, 4), sharex=True)
 # [axs[0].axvline(cw.time.values[5], color='gray') for cw in composite_wind_events]
 
@@ -4253,24 +4317,13 @@ axs[2].set_ylabel("7 meter\nChlorophyll [$\\mathsf{mg \\; m^{-3}}$]")
 # %%
 ts = np.datetime64("2021")
 te = np.datetime64("2022")
-temp1 = (
-    flort.where((flort.time > ts) & (flort.time < te))
-    .sortby("time")
-    .resample(time="1D")
-    .mean()
-)
-temp2 = (
-    optaa.where((optaa.time > ts) & (optaa.time < te))
-    .sortby("time")
-    .resample(time="1D")
-    .mean()
-)
+temp1 = flort.where((flort.time > ts) & (flort.time < te)).sortby("time").resample(time="1D").mean()
+temp2 = optaa.where((optaa.time > ts) & (optaa.time < te)).sortby("time").resample(time="1D").mean()
 chloro = np.nanmean(
-    [temp1.estimated_chlorophyll.values, temp2.estimated_chlorophyll.values], axis=0
+    [temp1.estimated_chlorophyll.values, temp2.estimated_chlorophyll.values],
+    axis=0,
 )
-nitr = (
-    nitrate.where((nitrate.time > ts) & (nitrate.time < te)).resample(time="1D").mean()
-)
+nitr = nitrate.where((nitrate.time > ts) & (nitrate.time < te)).resample(time="1D").mean()
 fig, axs = plt.subplots(2, 1, figsize=(8, 5), sharex=True)
 plt.suptitle("2021 Chlorophyll and Nitrate Time Series", fontsize=20)
 # [axs[0].axvline(cw.time.values[5], color='gray') for cw in composite_wind_events]
@@ -4321,61 +4374,32 @@ plt.savefig(
 midshelf_depth_integrate = midshelf_nitrate.copy()
 fig, axs = plt.subplots(1, 1, figsize=(3, 3), sharex=True)
 axs.plot(
-    midshelf_depth_integrate["depth_integrated_nitrate"]
-    .groupby("time.month")
-    .mean(dim="time")
-    .month,
-    midshelf_depth_integrate["depth_integrated_nitrate"]
-    .groupby("time.month")
-    .mean(dim="time")
-    / 80,
+    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
+    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 80,
     color="black",
     label="Mid-shelf",
 )
 axs.fill_between(
-    midshelf_depth_integrate["depth_integrated_nitrate"]
-    .groupby("time.month")
-    .mean(dim="time")
-    .month,
-    midshelf_depth_integrate["depth_integrated_nitrate"]
-    .groupby("time.month")
-    .mean(dim="time")
-    / 80
+    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
+    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 80
     - (
-        midshelf_depth_integrate["depth_integrated_nitrate"]
-        .groupby("time.month")
-        .std(dim="time")
+        midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
         / np.sqrt(
-            midshelf_depth_integrate["depth_integrated_nitrate"]
-            .groupby("time.month")
-            .count("time")
+            midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time"),
         )
         * distributions.t(
-            midshelf_depth_integrate["depth_integrated_nitrate"]
-            .groupby("time.month")
-            .count("time")
-            - 1
+            midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1,
         ).isf(0.025)
     )
     / 80,
-    midshelf_depth_integrate["depth_integrated_nitrate"]
-    .groupby("time.month")
-    .mean(dim="time")
-    / 80
+    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 80
     + (
-        midshelf_depth_integrate["depth_integrated_nitrate"]
-        .groupby("time.month")
-        .std(dim="time")
+        midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
         / np.sqrt(
-            midshelf_depth_integrate["depth_integrated_nitrate"]
-            .groupby("time.month")
-            .count("time")
+            midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time"),
         )
         * distributions.t(
-            midshelf_depth_integrate["depth_integrated_nitrate"]
-            .groupby("time.month")
-            .count("time")
-            - 1
+            midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1,
         ).isf(0.025)
     )
     / 80,
@@ -4396,10 +4420,10 @@ axs.fill_between(
     - (
         nitrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
         / np.sqrt(
-            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time")
+            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time"),
         )
         * distributions.t(
-            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1
+            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1,
         ).isf(0.025)
     )
     / 25,
@@ -4407,10 +4431,10 @@ axs.fill_between(
     + (
         nitrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
         / np.sqrt(
-            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time")
+            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time"),
         )
         * distributions.t(
-            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1
+            nitrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1,
         ).isf(0.025)
     )
     / 25,

@@ -31,6 +31,8 @@ from tqdm import tqdm
 # For plotting months with colormap
 colors = cmaps["viridis"](np.linspace(0, 1, 6))
 
+FIG_SAVE_FMT = "png"
+
 # %%
 NOTEBOOK_DIR = Path().cwd().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
@@ -48,7 +50,7 @@ OLD_VEL_PATH = list(
 )
 NEW_VEL_PATH = DATA_DIR / "NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc"
 
-VELOCITY_VARIABLE = "cs"
+VELOCITY_VARIABLE = "cs_proj"
 
 # %%
 MIN_VEL_DEPTH = 10  # meters
@@ -269,7 +271,7 @@ for i, m in enumerate(composite_stress_monthly["month"].sel(month=slice(4, 9))):
 ax.minorticks_off()
 ax.axhline(0, color="black", lw=1.5, ls="-", alpha=0.7)
 ax.axvline(0, color="gray", lw=1.5, ls="--", alpha=0.7)
-ax.legend(ncol=2, loc="upper right")
+ax.legend(ncol=2, loc="upper right", framealpha=1)
 
 ax.text(
     0.02,
@@ -294,7 +296,11 @@ ax.text(
 
 fig.supylabel("Wind stress [$\\mathsf{N} \\; \\mathsf{m^{-2}}$]")
 fig.supxlabel("Days from beginning of upwelling event")
-plt.savefig(FIGURES_DIR / "manuscript/composite_wind_stress.pdf", format="pdf")
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_wind_stress.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+)
 
 # %%
 composite_vel_monthly_cs = composite(
@@ -385,8 +391,8 @@ fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.9, 0.5))
 fig.supxlabel("Cross-shelf velocity [$\\mathsf{cm \\; s^{-1}}$]", y=-0.07)
 fig.supylabel("z [$\\mathsf{{m}}$]", x=0.02)
 plt.savefig(
-    FIGURES_DIR / "manuscript/composite_cs_velocity.pdf",
-    format="pdf",
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_cs_velocity.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
     bbox_inches="tight",
 )
 
@@ -465,8 +471,8 @@ fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.9, 0.5))
 fig.supxlabel("Along-shelf Velocity [$\\mathsf{m \\; s^{-1}}$]", y=-0.07)
 fig.supylabel("z [$\\mathsf{{m}}$]", x=0.02)
 plt.savefig(
-    FIGURES_DIR / "manuscript/composite_as_velocity.pdf",
-    format="pdf",
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_as_velocity.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
     bbox_inches="tight",
 )
 
@@ -547,8 +553,8 @@ ax.legend()
 fig.supxlabel("Nitrate Concentration [$\\mathsf{m mol \\; m^{-3}}$]", y=0.03)
 fig.supylabel("z [$\\mathsf{{m}}$]", x=-0.03)
 plt.savefig(
-    FIGURES_DIR / "manuscript/monthly_midshelf_nitrate.pdf",
-    format="pdf",
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/monthly_midshelf_nitrate.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
     bbox_inches="tight",
 )
 
@@ -684,8 +690,8 @@ fig.supxlabel(
 )
 fig.supylabel("z [$\\mathsf{{m}}$]", x=0.02)
 plt.savefig(
-    FIGURES_DIR / "manuscript/composite_cs_nflux.pdf",
-    format="pdf",
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_cs_nflux.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
     bbox_inches="tight",
 )
 
@@ -767,8 +773,8 @@ for i, ax in enumerate(axs):
     ax.set_xticks([-5, -3, -1, 1, 3, 5])
 
 plt.savefig(
-    FIGURES_DIR / "manuscript/layer_cs_nflux.pdf",
-    format="pdf",
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/layer_cs_nflux.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
     bbox_inches="tight",
 )
 

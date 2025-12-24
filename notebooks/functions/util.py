@@ -2,14 +2,14 @@ import numpy as np
 
 
 def align_yaxis(ax1, v1, ax2, v2):
-    """
-    Adjust ax2 ylimit so that v2 in ax2 is aligned to v1 in ax1
+    """Adjust ax2 ylimit so that v2 in ax2 is aligned to v1 in ax1
 
     Args:
         ax1 (pyplot.axis): left axis
         v1 (scalar): value to align from left axis
         ax2 (pyplot.axis): right axis
         v2 (scalar): value to align from right axis
+
     """
     _, y1 = ax1.transData.transform((0, v1))
     _, y2 = ax2.transData.transform((0, v2))
@@ -23,8 +23,7 @@ def align_yaxis(ax1, v1, ax2, v2):
 
 
 def profiler_binning(d, z, z_lab="depth", t_lab="time", offset=0.5):
-    """
-    Bins a profiler time series into daily bins and depth bins.
+    """Bins a profiler time series into daily bins and depth bins.
     Removes any non-numeric data types, including any time types,
     outside of the coordinates.
 
@@ -33,7 +32,7 @@ def profiler_binning(d, z, z_lab="depth", t_lab="time", offset=0.5):
     z = depth bins array
     z_lab, t_lab = labels for depth, time in d
 
-    returns:
+    Returns:
     Binned xr.Dataset
     Args:
         d (xr.dataset): OOI profiler dataset
@@ -45,9 +44,11 @@ def profiler_binning(d, z, z_lab="depth", t_lab="time", offset=0.5):
 
     Returns:
         xr.dataset: binned dataset
+
     """
-    from flox.xarray import xarray_reduce
     import warnings
+
+    from flox.xarray import xarray_reduce
 
     types = [d[i].dtype for i in d]
     vars = list(d.keys())
@@ -79,8 +80,7 @@ def profiler_binning(d, z, z_lab="depth", t_lab="time", offset=0.5):
 
 
 def split_profiles(ds):
-    """
-    Split the data set into individual profiles, where each profile is a
+    """Split the data set into individual profiles, where each profile is a
     collection of data from a single deployment and profile sequence. The
     resulting data sets are returned in a list.
 
@@ -89,13 +89,15 @@ def split_profiles(ds):
     """
     # split the data into profiles, assuming at least 120 seconds between profiles
     dt = ds.where(
-        ds["time"].diff("time") > np.timedelta64(120, "s"), drop=True
+        ds["time"].diff("time") > np.timedelta64(120, "s"),
+        drop=True,
     ).get_index("time")
 
     # process each profile, adding the results to a list of profiles
     profiles = []
     jback = np.timedelta64(
-        30, "s"
+        30,
+        "s",
     )  # 30 second jump back to avoid collecting data from the following profile
     for i, d in enumerate(dt):
         # pull out the profile
@@ -114,8 +116,7 @@ def split_profiles(ds):
 
 
 def dt2cal(dt):
-    """
-    Convert array of datetime64 to a calendar array of year, month, day, hour,
+    """Convert array of datetime64 to a calendar array of year, month, day, hour,
     minute, seconds, microsecond with these quantites indexed on the last axis.
 
     Args:
@@ -124,6 +125,7 @@ def dt2cal(dt):
     Returns:
         array: calendar array with last axis representing year, month, day, hour,
             minute, second, microsecond
+
     """
     # allocate output
     out = np.empty(dt.shape + (7,), dtype="u4")
@@ -144,13 +146,12 @@ def find_nearest(array, value):
         idx = np.nan
     else:
         array = np.asarray(array)
-        idx = np.nanargmin((np.abs(array - value)))
+        idx = np.nanargmin(np.abs(array - value))
     return idx
 
 
 def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance between two points
+    """Calculate the great circle distance between two points
     on the earth (specified in decimal degrees)
 
     Args:
@@ -161,6 +162,7 @@ def haversine(lon1, lat1, lon2, lat2):
 
     Returns:
         scalar: distance in km between (lon1, lat1) and (lon2, lat2)
+
     """
     # convert decimal degrees to radians
     lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
@@ -175,8 +177,7 @@ def haversine(lon1, lat1, lon2, lat2):
 
 
 def list_files(url, tag=r".*\.nc$"):
-    """
-    Function to create a list of the netCDF data files in the THREDDS catalog
+    """Function to create a list of the netCDF data files in the THREDDS catalog
     created by a request to the M2M system. Obtained from 2022 OOIFB workshop
 
     Args:
@@ -185,10 +186,12 @@ def list_files(url, tag=r".*\.nc$"):
 
     Returns:
         array: list of files in the catalog with the URL path set relative to the catalog
+
     """
-    from bs4 import BeautifulSoup
     import re
+
     import requests
+    from bs4 import BeautifulSoup
 
     with requests.session() as s:
         page = s.get(url).text
@@ -201,8 +204,7 @@ def list_files(url, tag=r".*\.nc$"):
 
 
 def ndbc_heights(url):
-    """
-    Obtains station metadata from NDBC site stations, since they don't include it in
+    """Obtains station metadata from NDBC site stations, since they don't include it in
     their netCDF files for some reason. All outputs in meters.
 
     Args:
@@ -214,10 +216,12 @@ def ndbc_heights(url):
     Returns:
         tuple of scalar: site elevation, air temp height, anemometer height,
             barometer elevation, sea temp depth, water depth, and watch circle radius.
+
     """
-    from bs4 import BeautifulSoup
-    import requests
     import re
+
+    import requests
+    from bs4 import BeautifulSoup
 
     with requests.session() as s:
         page = s.get(url).text
@@ -235,7 +239,8 @@ def ndbc_heights(url):
         m_var = re.search(r"Site elevation: (sea level|\d+\.?\d*)", i)
         if m_var:
             m_val = re.search(
-                r"sea level|\d+\.?\d*", m_var.string[m_var.start() : m_var.end()]
+                r"sea level|\d+\.?\d*",
+                m_var.string[m_var.start() : m_var.end()],
             )
             if m_val:
                 # have to check if string is 'sea level', since NOAA doesn't use 0 (why?!)
@@ -300,8 +305,7 @@ def ndbc_heights(url):
 
 
 def princax(u, v):
-    """
-    Determines the principal axis of variance for the east and north velocities defined by u and v
+    """Determines the principal axis of variance for the east and north velocities defined by u and v
 
     Args:
         u (scalar or array): east velocity
@@ -310,6 +314,7 @@ def princax(u, v):
     Returns:
         tuple of scalar: (theta, major, minor) - the angle of the principal axis CW from north,
             the variance along the major axis, and the variance along the minor axis
+
     """
     u = np.array(u)
     v = np.array(v)
@@ -341,8 +346,7 @@ def princax(u, v):
 
 
 def pycno(x, zf, r, h=125):
-    """
-    Function for an idealized representation of the 25.8 kg/m^3 isopycnal.
+    """Function for an idealized representation of the 25.8 kg/m^3 isopycnal.
     See Austin and Barth, 2002
 
     Args:
@@ -353,35 +357,35 @@ def pycno(x, zf, r, h=125):
 
     Returns:
         scalar or array: cross-shelf depth of the 25.8 kg/m^3 isopycnal
+
     """
     return -h + (zf + h) * np.exp(x / r)
 
 
 def nutnr_qc(ds, rmse_lim=1000):
-    """
-    Remove bad fits in OOI nutnr datasets
+    """Remove bad fits in OOI nutnr datasets
 
     Args:
         ds (Dataset): OOI nutnr dataset
         rmse_lim (int, optional): Maximum RMSE for fit to be kept. Defaults to 1000.
+
     """
-    from scipy.optimize import curve_fit
     import warnings
+
     import xarray as xr
+    from scipy.optimize import curve_fit
 
     # covariance issues are explicitly handled by checking if pcov is finite
     warnings.filterwarnings(
-        "ignore", message="Covariance of the parameters could not be estimated"
+        "ignore",
+        message="Covariance of the parameters could not be estimated",
     )
 
     temp = ds.sel({"wavelength": slice(217, 240)})
     mask = np.full(ds.time.shape, True, dtype=bool)
     for i in range(len(temp.time)):
         # remove fits if any values are nan or inf
-        if np.any(~np.isfinite(temp.spectral_channels[i] - temp.dark_val[i])):
-            mask[i] = False
-        # remove anomalously low salinity values
-        elif ds.salinity[i] <= 20:
+        if np.any(~np.isfinite(temp.spectral_channels[i] - temp.dark_val[i])) or ds.salinity[i] <= 20:
             mask[i] = False
         # remove fits where mean is near zero
         elif ds.spectral_channels[i].mean() > 1000:
@@ -393,26 +397,21 @@ def nutnr_qc(ds, rmse_lim=1000):
                 ftol=0.01,
                 xtol=0.01,
             )
-            residuals = (
-                temp.spectral_channels[i] - temp.dark_val[i] - temp.wavelength * a - b
-            )
+            residuals = temp.spectral_channels[i] - temp.dark_val[i] - temp.wavelength * a - b
             rmse = ((np.sum(residuals**2) / (residuals.size - 2)) ** 0.5).values
             # remove fits with high rmse for linear fit in wavelength range
-            if rmse > rmse_lim:
-                mask[i] = False
-            # remove fits with any negative values in wavelength range
-            elif np.any(temp.spectral_channels[i] - temp.dark_val[i] < 0):
-                mask[i] = False
-            # remove fits that did not converge
-            elif np.any(~np.isfinite(pcov)):
+            if (
+                rmse > rmse_lim
+                or np.any(temp.spectral_channels[i] - temp.dark_val[i] < 0)
+                or np.any(~np.isfinite(pcov))
+            ):
                 mask[i] = False
     ds = ds.where(xr.DataArray(mask, coords={"time": ds.time.values}), drop=True)
     return ds
 
 
 def rot(u, v, theta):
-    """
-    Rotates a vector counter clockwise or a coordinate system clockwise
+    """Rotates a vector counter clockwise or a coordinate system clockwise
     Designed to be used with theta output from princax(u, v)
 
     Args:
@@ -422,6 +421,7 @@ def rot(u, v, theta):
 
     Returns:
         tuple of scalar or array: (ur, vr) - x and y components of vector in rotated coordinate system
+
     """
     w = u + 1j * v
     ang = np.deg2rad(theta)
@@ -432,8 +432,7 @@ def rot(u, v, theta):
 
 
 def uv_from_spddir(spd, dir, which="from"):
-    """
-    Computes east and west vectors of velocity vector
+    """Computes east and west vectors of velocity vector
 
     Args:
         spd (scalar or array): Velocity magnitude.
@@ -443,6 +442,7 @@ def uv_from_spddir(spd, dir, which="from"):
 
     Returns:
         tuple of scalar or array: (u, v) - east velocity "u" and north velocity "v"
+
     """
     theta = np.array(dir)
     theta = np.deg2rad(theta)
@@ -458,8 +458,7 @@ def uv_from_spddir(spd, dir, which="from"):
 
 
 def ws_integrand(tp, t, tau, k, rho=1000):
-    """
-    Integrand for computation of 8-day exponentially weighted integral of
+    """Integrand for computation of 8-day exponentially weighted integral of
     wind stress. See Austin and Barth, 2002.
 
     Args:
@@ -471,13 +470,13 @@ def ws_integrand(tp, t, tau, k, rho=1000):
 
     Returns:
         array: integrand for use in scipy.integrate and computation of W8d
+
     """
     return tau[: t + 1] / rho * np.exp((tp[: t + 1] - t) / k)
 
 
 def relative_humidity_from_dewpoint(t, t_dew):
-    """
-    Relative humidity as a function of air temp. and dew point temp.
+    """Relative humidity as a function of air temp. and dew point temp.
 
     Args:
         t (scalar or array): air temperature (degC)
@@ -485,6 +484,7 @@ def relative_humidity_from_dewpoint(t, t_dew):
 
     Returns:
         scalar or array: relative humidity as a percent (0->100)
+
     """
     e = 610.94 * np.exp(17.625 * t_dew / (t_dew + 243.04))
     es = 610.94 * np.exp(17.625 * t / (t + 243.04))

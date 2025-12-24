@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: .venv
+#     display_name: nitrate-upwelling
 #     language: python
 #     name: python3
 # ---
@@ -29,16 +29,17 @@ from sympy import Piecewise, integrate, symbols
 from tqdm import tqdm
 
 # %%
+FIG_SAVE_FMT = "png"
+
+# %%
 NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR
-    / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR
-    / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 GEBCO_PATH = list(Path(DATA_DIR / "GEBCO/").glob("*.nc"))
@@ -52,8 +53,7 @@ bathymetry = xr.open_mfdataset(GEBCO_PATH)
 
 # %%
 def dt2cal(dt):
-    """
-    Convert array of datetime64 to a calendar array of year, month, day, hour,
+    """Convert array of datetime64 to a calendar array of year, month, day, hour,
     minute, seconds, microsecond with these quantites indexed on the last axis.
 
     Args:
@@ -62,6 +62,7 @@ def dt2cal(dt):
     Returns:
         array: calendar array with last axis representing year, month, day, hour,
             minute, second, microsecond
+
     """
     # allocate output
     out = np.empty(dt.shape + (7,), dtype="u4")
@@ -78,18 +79,18 @@ def dt2cal(dt):
 
 
 def find_nearest(
-    array: NDArray[double | int_], value: double | int_ | float | int
+    array: NDArray[double | int_],
+    value: double | int_ | float,
 ) -> int | None:
     if np.all(np.isnan(array)):
         return None
     array = np.asarray(array)
-    idx = int(np.nanargmin((np.abs(array - value))))
+    idx = int(np.nanargmin(np.abs(array - value)))
     return idx
 
 
 def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance between two points
+    """Calculate the great circle distance between two points
     on the earth (specified in decimal degrees)
 
     Args:
@@ -100,6 +101,7 @@ def haversine(lon1, lat1, lon2, lat2):
 
     Returns:
         scalar: distance in km between (lon1, lat1) and (lon2, lat2)
+
     """
     # convert decimal degrees to radians
     lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
@@ -114,8 +116,7 @@ def haversine(lon1, lat1, lon2, lat2):
 
 
 def pycno(x, zf, r, h=125):
-    """
-    Function for an idealized representation of the 25.8 kg/m^3 isopycnal.
+    """Function for an idealized representation of the 25.8 kg/m^3 isopycnal.
     See Austin and Barth, 2002
 
     Args:
@@ -126,13 +127,13 @@ def pycno(x, zf, r, h=125):
 
     Returns:
         scalar or array: cross-shelf depth of the 25.8 kg/m^3 isopycnal
+
     """
     return -h + (zf + h) * np.exp(x / r)
 
 
 def ws_integrand(tp, t, tau, k, rho=1000):
-    """
-    Integrand for computation of 8-day exponentially weighted integral of
+    """Integrand for computation of 8-day exponentially weighted integral of
     wind stress. See Austin and Barth, 2002.
 
     Args:
@@ -144,6 +145,7 @@ def ws_integrand(tp, t, tau, k, rho=1000):
 
     Returns:
         array: integrand for use in scipy.integrate and computation of W8d
+
     """
     return tau[: t + 1] / rho * np.exp((tp[: t + 1] - t) / k)
 
@@ -168,8 +170,11 @@ lat = bathymetry.lat.values
 
 meters = np.nan * np.zeros(len(long))
 for i, lo in enumerate(long):
-    meters[i] = haversine(long[0], lat, long[i], lat) - haversine(
-        long[0], lat, coast.lon.values, lat
+    meters[i] = haversine(long[0], lat, lo, lat) - haversine(
+        long[0],
+        lat,
+        coast.lon.values,
+        lat,
     )
 
 long = long[meters > -100]
@@ -207,16 +212,20 @@ for i in tqdm(range(len(zf))):
 # %%
 # load NHL transects and compute distance from coastline in meters
 nhl_grid = xr.load_dataset(
-    "../../datasets/ship/Newport_Hydrographic_Line_Data_1997_2021/data_files/newport_hydrographic_line_gridded_sections.nc"
+    "../data/NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
 )
 nhl_grid = nhl_grid.squeeze()
 nhl_grid = nhl_grid.where(nhl_grid.pressure > 10)
 nhl_grid["meters"] = -haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 print(f"Total number of NHL transects: {len(nhl_grid.time)}")
 nhl_grid = nhl_grid.where(
-    ((nhl_grid["time.month"] > 3) & (nhl_grid["time.month"] < 11)), drop=True
+    ((nhl_grid["time.month"] > 3) & (nhl_grid["time.month"] < 11)),
+    drop=True,
 )
 print(f"Total number of summertime NHL transects: {len(nhl_grid.time)}")
 # linearly interpolate to find 25.8 isopycnal depth
@@ -235,7 +244,6 @@ for i, x in enumerate(tqdm(nhl_grid["meters"])):
                 # pycno_depth[i][j] = inter
             except ValueError:
                 pycno_depth[i][j] = np.nan
-                pass
 nhl_grid["pycno_depth"] = (["longitude", "time"], -pycno_depth)
 # nhl_grid = nhl_grid.where(nhl_grid.pycno_depth < -10)
 
@@ -248,14 +256,20 @@ H = np.nan * np.zeros(len(pycno_depth.T))
 H_err = np.nan * np.zeros(len(pycno_depth.T))
 
 nhl_grid["meters"] = -haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 
 for i, d in enumerate(tqdm(-pycno_depth.T)):
     mask = ~np.isnan(d)
     if len(d[mask]) > 20:
         (Zf[i], R[i], H[i]), cov = curve_fit(
-            pycno, nhl_grid["meters"][mask], d[mask], p0=[0, 50, 125]
+            pycno,
+            nhl_grid["meters"][mask],
+            d[mask],
+            p0=[0, 50, 125],
         )  # , bounds=([-np.inf, 0, 0], [np.inf, 1000, 2000])
         (Zf_err[i], R_err[i], H_err[i]) = np.sqrt(np.diagonal(cov))
 
@@ -266,7 +280,10 @@ nhl_grid["Zf_err"] = (["time"], Zf_err)
 
 nhl_grid = nhl_grid.resample(time="1D").median()
 nhl_grid["meters"] = -haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 
 mask = (~np.isnan(nhl_grid.H)) & (~np.isnan(nhl_grid.R)) & (~np.isnan(nhl_grid.Zf))
@@ -275,14 +292,20 @@ nhl_grid = nhl_grid.where(mask, drop=True)
 print(f"Total number of reasonable fits: {len(nhl_grid.time)}")
 
 nhl_grid["meters"] = -haversine(
-    nhl_grid["longitude"], nhl_grid["latitude"], -124.0590, nhl_grid["latitude"]
+    nhl_grid["longitude"],
+    nhl_grid["latitude"],
+    -124.0590,
+    nhl_grid["latitude"],
 )
 
 fit_rmse = np.nan * np.empty(len(nhl_grid.time))
 for i, t in enumerate(nhl_grid.time):
     temp = nhl_grid.sel(time=t)
     residuals = temp.pycno_depth - pycno(
-        temp.meters.values, temp.Zf.values, temp.R.values, temp.H.values
+        temp.meters.values,
+        temp.Zf.values,
+        temp.R.values,
+        temp.H.values,
     )
     fit_rmse[i] = ((np.sum(residuals**2) / (residuals.size - 2)) ** 0.5).values
 
@@ -301,7 +324,10 @@ fit_rmse = np.nan * np.empty(len(nhl_grid.time))
 for i, t in enumerate(nhl_grid.time):
     temp = nhl_grid.sel(time=t)
     residuals = temp.pycno_depth - pycno(
-        temp.meters.values, temp.Zf.values, temp.R.values, temp.H.values
+        temp.meters.values,
+        temp.Zf.values,
+        temp.R.values,
+        temp.H.values,
     )
     fit_rmse[i] = ((np.sum(residuals**2) / (residuals.size - 2)) ** 0.5).values
 
@@ -332,9 +358,7 @@ N = 0
 fig, axs = plt.subplots(5, 5, figsize=(20, 30), sharex=True, sharey=True)
 for r in tqdm(range(rows)):
     for c in range(cols):
-        mask = (nhl_grid["time"] >= trange[5 * r + c % 5]) & (
-            nhl_grid["time"] < trange[5 * r + c % 5] + tdelta
-        )
+        mask = (nhl_grid["time"] >= trange[5 * r + c % 5]) & (nhl_grid["time"] < trange[5 * r + c % 5] + tdelta)
         for i, (t, d, Zf, R, H) in enumerate(
             zip(
                 nhl_grid["time"][mask].values,
@@ -342,7 +366,8 @@ for r in tqdm(range(rows)):
                 nhl_grid["Zf"][mask].values,
                 nhl_grid["R"][mask].values,
                 nhl_grid["H"][mask].values,
-            )
+                strict=False,
+            ),
         ):
             mask = ~np.isnan(d) & (nhl_grid.meters.T[0] < -10)
             ymd = dt2cal(t)[0:3]
@@ -366,7 +391,7 @@ for r in tqdm(range(rows)):
         axs[r][c].plot(meters, topo, color="black")
         handles, labels = axs[r][c].get_legend_handles_labels()
         by_label = dict(
-            zip(labels, handles)
+            zip(labels, handles, strict=False),
         )  # dicts can't have duplicate keys, avoids duplicate legend entries
         axs[r][c].legend(by_label.values(), by_label.keys(), loc="lower right")
         axs[r][c].set_ylim([-130, 5])
@@ -378,13 +403,7 @@ N
 
 # %%
 fig, axs = plt.subplots(3, 1, sharex=True)
-mask = (
-    (nhl_grid.Zf < 100)
-    & (nhl_grid.Zf > -100)
-    & (nhl_grid.R < 100)
-    & (nhl_grid.R > -100)
-    & (nhl_grid.H < 200)
-)
+mask = (nhl_grid.Zf < 100) & (nhl_grid.Zf > -100) & (nhl_grid.R < 100) & (nhl_grid.R > -100) & (nhl_grid.H < 200)
 axs[0].plot(nhl_grid.time[mask], nhl_grid.Zf[mask], ".")
 # axs[0].plot(nhl_grid.time, nhl_grid.Zf, '.')
 # axs[0].set_ylim(-75, 125)
@@ -494,7 +513,7 @@ ax.plot(
     label=f"$\\beta_0$={fit[1]:.2f}\n$\\beta_1$={fit[0]:.2f}",
 )
 ax.set_ylim(-100, 150)
-ax.set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{m^2 \\; s^{-1}}$]", labelpad=0)
+ax.set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{N \\; m^{-2}}$]", labelpad=0)
 ax.set_ylabel("$\\mathsf{Z_f}$ [$\\mathsf{m}$]", labelpad=-10)
 bbox = dict(boxstyle="round", fc="w")
 # ax.annotate(
@@ -509,7 +528,10 @@ bbox = dict(boxstyle="round", fc="w")
 wls_fit.summary()
 
 # %%
-fig, axs = plt.subplots(1, 3, figsize=(10, 3))
+d
+
+# %%
+fig, axs = plt.subplots(1, 3, figsize=(12, 4))
 plt.subplots_adjust(wspace=0.5)
 
 d = nhl_grid.isel(time=15)
@@ -525,12 +547,12 @@ axs[0].fill_between(meters, -1000, topo, color="grey")
 axs[0].plot(meters, topo, color="black")
 axs[0].set_ylim([-130, 25])
 axs[0].set_xlim([-60, 0])
-axs[0].set_xlabel("Distance from Coast [$\\mathsf{km}$]", labelpad=0)
-axs[0].set_ylabel("Depth [$\\mathsf{m}$]", labelpad=-5)
+axs[0].set_xlabel("Distance from coast [$\\mathsf{km}$]", labelpad=0)
+axs[0].set_ylabel("z [$\\mathsf{m}$]", labelpad=-5)
 axs[0].minorticks_off()
 bbox = dict(boxstyle="round", fc="w", ec="#BB5566", lw=2)
 axs[0].annotate(
-    "$h(x)=-H+(Z_f+H)e^{x/R}$",
+    "$h(x)=-H+(z_f+H)e^{x/R}$",
     xy=(0.15, 0.3),
     xytext=(0.4, 0.15),
     xycoords="axes fraction",
@@ -540,12 +562,13 @@ axs[0].annotate(
     color="#BB5566",
     ha="center",
 )
-axs[0].axhline(d.Zf, ls="--", color="k")
+axs[0].axhline(d.Zf, ls="--", color="k", linewidth=2)
+axs[0].axhline(0, color="k", linewidth=1)
 bbox = dict(boxstyle="round", fc="w", ec="k", lw=2)
 axs[0].annotate(
-    f"$Z_f={d.Zf.values:.0f} \\; \\mathsf{{m}}$",
-    xy=(0.8, 0.95),
-    xytext=(0.5, 0.85),
+    f"$z_f={d.Zf.values:.0f} \\; \\mathsf{{m}}$",
+    xy=(0.85, 0.6),
+    xytext=(0.6, 0.7),
     xycoords="axes fraction",
     fontsize=10,
     bbox=bbox,
@@ -554,7 +577,7 @@ axs[0].annotate(
 )
 bbox = dict(boxstyle="round", fc="w", ec="#004488", lw=2)
 axs[0].annotate(
-    "25.8 $\\sigma_{\\theta}$ Gridded\nTransect Data",
+    "25.8 $\\sigma_{\\theta}$ depth",
     xy=(0.4, 0.5),
     xytext=(0.1, 0.65),
     xycoords="axes fraction",
@@ -574,15 +597,17 @@ axs[1].errorbar(
     linestyle="",
     marker=".",
     elinewidth=2,
+    color="#004488",
 )
 axs[1].plot(
     wind_al_nhl[wind_use][mask],
     wind_al_nhl[wind_use][mask] * fit[0] + fit[1],
     label=f"$\\beta_0$={fit[1]:.2f}\n$\\beta_1$={fit[0]:.2f}",
+    color="#BB5566",
 )
 axs[1].set_ylim(-100, 150)
-axs[1].set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{m^2 \\; s^{-1}}$]", labelpad=0)
-axs[1].set_ylabel("$\\mathsf{Z_f}$ [$\\mathsf{m}$]", labelpad=-10)
+axs[1].set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{N \\; m^{-2}}$]", labelpad=0)
+axs[1].set_ylabel("$\\mathsf{z_f}$ [$\\mathsf{m}$]", labelpad=-10)
 axs[1].minorticks_off()
 bbox = dict(boxstyle="round", fc="w")
 # axs[1].annotate(f'$\\beta_0={fit[1]:.2f}$ $\\mathsf{{m}}$\n$\\beta_1={fit[0]:.2f}$ $\\mathsf{{s/m}}$\n${{R^2={r_squared:.2f}}}$', xy=(0.95, 0.95), xycoords='axes fraction', bbox=bbox, fontsize=10, ha='right', va='top')
@@ -591,9 +616,7 @@ bbox = dict(boxstyle="round", fc="w")
 d = nhl_grid.isel(time=15)
 mask = ~np.isnan(d)
 axs[2].fill_between(
-    np.arange(-60, 5)[
-        pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
-    ],
+    np.arange(-60, 5)[pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0],
     pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values)[
         pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
     ],
@@ -601,9 +624,7 @@ axs[2].fill_between(
     color="lightblue",
 )
 axs[2].fill_between(
-    np.arange(-60, 5)[
-        pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
-    ],
+    np.arange(-60, 5)[pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0],
     -1000,
     pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values)[
         pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) < 0
@@ -611,9 +632,7 @@ axs[2].fill_between(
     color="darkblue",
 )
 axs[2].fill_between(
-    np.arange(-60, 5)[
-        pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) >= -1
-    ],
+    np.arange(-60, 5)[pycno(np.arange(-60, 5), d.Zf.values, d.R.values, d.H.values) >= -1],
     -1000,
     0,
     color="darkblue",
@@ -629,8 +648,8 @@ axs[2].plot(meters, topo, color="black")
 axs[2].axhline(0, c="k")
 axs[2].set_ylim([-130, 25])
 axs[2].set_xlim([-60, 0])
-axs[2].set_xlabel("Distance from Coast [$\\mathsf{km}$]", labelpad=0)
-axs[2].set_ylabel("Depth [$\\mathsf{m}$]", labelpad=-5)
+axs[2].set_xlabel("Distance from coast [$\\mathsf{km}$]", labelpad=0)
+axs[2].set_ylabel("z [$\\mathsf{m}$]", labelpad=-5)
 axs[2].minorticks_off()
 bbox = dict(boxstyle="round", fc="w", ec="k", lw=2)
 axs[2].annotate(
@@ -660,7 +679,12 @@ axs[0].annotate("(a)", xy=(0.85, 0.05), xycoords="axes fraction", fontsize=10)
 axs[1].annotate("(b)", xy=(0.85, 0.05), xycoords="axes fraction", fontsize=10)
 axs[2].annotate("(c)", xy=(0.85, 0.05), xycoords="axes fraction", fontsize=10)
 
-# plt.savefig(os.path.join(notebook_dir, "../manuscript/simple_model.pdf"), format="pdf")
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/simple-model.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    dpi=600,
+    bbox_inches="tight",
+)
 
 # %%
 wind_al_nitrate, nitrate_al_wind = xr.align(wind, inner_nitrate)
@@ -668,18 +692,19 @@ wind_al_nitrate, nitrate_al_wind = xr.align(wind, inner_nitrate)
 slope = 1 / (fit[0])
 intercept = -(-30) * slope
 
-fig, ax = plt.subplots(figsize=(3, 3))
+fig, ax = plt.subplots(figsize=(5, 4))
 ax.axvline(0, ls="--", color="black")
 ax.plot(
     wind_al_nitrate[wind_use],
     nitrate_al_wind["nitrate"].mean(dim="depth", skipna=True),
     ".",
+    color="#004488",
 )
 ax.set_xlim(-0.15, 0.1)
 ax.set_ylim(-2, 40)
-ax.set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{m^2 \\; s^{-1}}$]")
-ax.set_ylabel("Depth Avg. Nitrate $[\\mathsf{\\mu M}]$")
-ax.plot(slope * zf + intercept, mod_nda)
+ax.set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{N \\; m^{-2}}$]")
+ax.set_ylabel("Depth mean nitrate conc. $[\\mathsf{mmol \\; m^{-3}}]$")
+ax.plot(slope * zf + intercept, mod_nda, color="#BB5566", linewidth=2)
 ax.text(
     0.05,
     0.06,
@@ -703,22 +728,24 @@ xp = xp[xp_idx]
 mod_nda_idx = mod_nda[xp_idx]
 mod_nda_interp = np.interp(wind_al_nitrate[wind_use], xp, mod_nda_idx)
 mask = ~np.isnan(mod_nda_interp) & ~np.isnan(
-    nitrate_al_wind["nitrate"].median(dim="depth", skipna=True)
+    nitrate_al_wind["nitrate"].mean(dim="depth", skipna=True),
 )
 ols_fit = sm.OLS(
     mod_nda_interp[mask],
     sm.add_constant(
-        (nitrate_al_wind["nitrate"].median(dim="depth", skipna=True)[mask]).values
+        (nitrate_al_wind["nitrate"].mean(dim="depth", skipna=True)[mask]).values,
     ),
 ).fit()
 bbox = dict(boxstyle="round", fc="w")
 # ax.annotate(f'${{R^2={ols_fit.rsquared:.2f}}}$', xy=(0.95, 0.95), xycoords='axes fraction', bbox=bbox, fontsize=10, ha='right', va='top')
 
-# plt.savefig(
-#     os.path.join(notebook_dir, "../manuscript/wind-nitrate.pdf"),
-#     format="pdf",
-#     bbox_inches="tight",
-# )
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/nitrate-wind.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+    dpi=600,
+)
+
 ols_fit.summary()
 
 # %%
@@ -736,22 +763,15 @@ for i, t in enumerate(tqdm(tdelay)):
         )
         mask = ~np.isnan(temp)
         if not np.any(np.isnan(wind.coare_y[j - t * 5 : j])) and not temp.size == 0:
-            fout[j] = (
-                simpson(temp[mask], x=wind["day_num"].values[j - t * 5 : j][mask]) / t
-            )
+            fout[j] = simpson(temp[mask], x=wind["day_num"].values[j - t * 5 : j][mask]) / t
     temp = xr.Dataset(
-        data_vars=dict(wkd=(["time"], fout)), coords=dict(time=wind["time"])
+        data_vars=dict(wkd=(["time"], fout)),
+        coords=dict(time=wind["time"]),
     )
     temp_wind, temp_nhl = xr.align(temp, nhl_grid)
     m = dt2cal(temp_nhl["time"].values).T[1]
     mask = (temp_nhl["Zf"] < 100) & (temp_nhl["Zf"] > -100)
-    summer = (
-        (m >= 4)
-        & (m <= 9)
-        & (mask)
-        & (~np.isnan(temp_wind.wkd))
-        & (~np.isnan(temp_nhl.Zf))
-    )
+    summer = (m >= 4) & (m <= 9) & (mask) & (~np.isnan(temp_wind.wkd)) & (~np.isnan(temp_nhl.Zf))
     wkd_correlation_zf[i] = sm.tsa.stattools.ccf(
         temp_wind["wkd"][summer].values,
         temp_nhl["Zf"][summer].values,
@@ -774,28 +794,31 @@ for i, t in enumerate(tqdm(tdelay)):
         )
         mask = ~np.isnan(temp)
         if not np.any(np.isnan(wind.coare_y[j - t * 5 : j])) and not temp.size == 0:
-            fout[j] = (
-                simpson(temp[mask], x=wind["day_num"].values[j - t * 5 : j][mask]) / t
-            )
+            fout[j] = simpson(temp[mask], x=wind["day_num"].values[j - t * 5 : j][mask]) / t
     temp = xr.Dataset(
-        data_vars=dict(wkd=(["time"], fout)), coords=dict(time=wind["time"])
+        data_vars=dict(wkd=(["time"], fout)),
+        coords=dict(time=wind["time"]),
     )
     temp_nitrate, temp_wind = xr.align(
-        inner_nitrate["depth_integrated_nitrate"], temp["wkd"]
+        inner_nitrate["depth_integrated_nitrate"],
+        temp["wkd"],
     )
     m = dt2cal(temp_wind["time"].values).T[1]
     mask = ~np.isnan(temp_nitrate) & ~np.isnan(temp_wind)
     summer = (m >= 4) & (m <= 9) & (mask)
     wkd_correlation_n[i - 1] = sm.tsa.stattools.ccf(
-        temp_nitrate[summer].values, temp_wind[summer].values, adjusted=True, nlags=1
+        temp_nitrate[summer].values,
+        temp_wind[summer].values,
+        adjusted=True,
+        nlags=1,
     )[0]
 
 # %%
 fig, ax = plt.subplots()
-ax.plot(tdelay, wkd_correlation_zf, label=r"$\mathsf{Z_f}$")
+ax.plot(tdelay, wkd_correlation_zf, label="$\\mathsf{Z_f}$")
 ax.plot(tdelay, wkd_correlation_n, label="Nitrate")
-ax.set_xlabel(r"Relaxation timescale $k$ [$\mathsf{days}$]")
-ax.set_ylabel(r"Correlation with $\mathsf{W_{kd}}$")
+ax.set_xlabel("Relaxation timescale $k$ [$\\mathsf{days}$]")
+ax.set_ylabel("Correlation with $\\mathsf{W_{kd}}$")
 ax.legend()
 ax.set_xlim(1, 15)
 ax.minorticks_off()
@@ -829,7 +852,7 @@ ax.plot(
     label=f"$\\beta_0$={fit[1]:.2f}\n$\\beta_1$={fit[0]:.2f}",
 )
 ax.set_ylim(-100, 150)
-ax.set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{m^2 \\; s^{-1}}$]", labelpad=0)
+ax.set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{N \\; m^{-2}}$]", labelpad=0)
 ax.set_ylabel("$\\mathsf{Z_f}$ [$\\mathsf{m}$]", labelpad=-10)
 bbox = dict(boxstyle="round", fc="w")
 wls_fit.summary()
@@ -875,7 +898,13 @@ plt.annotate(
     arrowprops=dict(arrowstyle="->", color="k"),
 )
 plt.annotate(
-    "Mid-Shelf", xy=(-9, -25), fontsize=10, bbox=None, color="k", rotation=0, ha="right"
+    "Mid-Shelf",
+    xy=(-9, -25),
+    fontsize=10,
+    bbox=None,
+    color="k",
+    rotation=0,
+    ha="right",
 )
 bbox = dict(boxstyle="larrow,pad=0.3", fc="w", ec="k", lw=2)
 # plt.annotate(
@@ -906,7 +935,12 @@ plt.xlabel("Distance from Coast")
 plt.ylabel("Depth")
 # plt.gca().set_aspect(1)
 plt.scatter(
-    [-24, -30, -36], [20, 20, 20], s=500, edgecolors="black", c="white", linewidths=2
+    [-24, -30, -36],
+    [20, 20, 20],
+    s=500,
+    edgecolors="black",
+    c="white",
+    linewidths=2,
 )
 plt.scatter([-24, -30, -36], [20, 20, 20], s=100, c="black")
 plt.annotate(
@@ -924,3 +958,5 @@ plt.axvline(-20, 0.24, 0.75, c="k", ls="--", lw=3)
 # plt.savefig(
 #     os.path.join(notebook_dir, "../manuscript/2d-upwelling-schematic.pdf"), format="pdf"
 # )
+
+# %%

@@ -49,18 +49,9 @@ HTML("""
 NOTEBOOK_DIR = Path().cwd().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
-VEL_PATH_V1 = (
-    DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
-)
-VEL_PATH_V4 = (
-    DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
-)
-VEL_PATH_V5 = (
-    DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
-)
+VEL_PATH_V1 = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
+VEL_PATH_V4 = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
+VEL_PATH_V5 = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
 
 GLOBEC_TIME = slice(np.datetime64("1997-01-01"), np.datetime64("2004-12-31"))
 NANOOS_TIME = slice(np.datetime64("2006-07-01"), np.datetime64("2014-09-30"))
@@ -110,7 +101,7 @@ def fit_utide_from_ds(
     for depth in tqdm(ds["depth"], desc="Fitting UTide"):
         # skip depths where either u or v is all NaN
         if np.all(np.isnan(ds["u"].sel(depth=depth))) or np.all(
-            np.isnan(ds["v"].sel(depth=depth))
+            np.isnan(ds["v"].sel(depth=depth)),
         ):
             continue
 
@@ -292,6 +283,7 @@ def make_ttide_figure(
 
     Returns:
         tuple[Figure, NDArray]: The matplotlib Figure object and array of Axes objects containing the plot.
+
     """
     fig, axs = plt.subplots(1, 5, figsize=(12, 6), sharey=True)
 
@@ -364,7 +356,9 @@ fig, axs = make_ttide_figure(
     section_name="NANOOS",
 )
 plt.savefig(
-    FIGURES_DIR / "ttide_velocity_nanoos_v1_v5.png", dpi=300, bbox_inches="tight"
+    FIGURES_DIR / "ttide_velocity_nanoos_v1_v5.png",
+    dpi=300,
+    bbox_inches="tight",
 )
 
 # %%
@@ -392,7 +386,11 @@ for const in constituents:
     fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
 handles, labels = axs[0].get_legend_handles_labels()
 proxy = mpatches.FancyBboxPatch(
-    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+    xy=(0, 0),
+    width=0,
+    height=0,
+    visible=False,
+    mutation_aspect=0,
 )
 handles.append("NANOOS v1")
 labels.append("")
@@ -410,7 +408,9 @@ leg = fig.legend(
 )
 fig.suptitle("OOI vs. NANOOS v1 Selected Tidal Constituents", fontsize=12, y=0.95)
 plt.savefig(
-    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v1.png", dpi=300, bbox_inches="tight"
+    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v1.png",
+    dpi=300,
+    bbox_inches="tight",
 )
 
 # %%
@@ -426,7 +426,11 @@ for const in constituents:
     fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
 handles, labels = axs[0].get_legend_handles_labels()
 proxy = mpatches.FancyBboxPatch(
-    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+    xy=(0, 0),
+    width=0,
+    height=0,
+    visible=False,
+    mutation_aspect=0,
 )
 handles.append("NANOOS v4")
 labels.append("")
@@ -444,7 +448,9 @@ leg = fig.legend(
 )
 fig.suptitle("OOI vs. NANOOS v4 Selected Tidal Constituents", fontsize=12, y=0.95)
 plt.savefig(
-    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v4.png", dpi=300, bbox_inches="tight"
+    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v4.png",
+    dpi=300,
+    bbox_inches="tight",
 )
 
 # %%
@@ -460,7 +466,11 @@ for const in constituents:
     fig, axs = plot_tidal_constituents(tide, const, fig, ls="--")
 handles, labels = axs[0].get_legend_handles_labels()
 proxy = mpatches.FancyBboxPatch(
-    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+    xy=(0, 0),
+    width=0,
+    height=0,
+    visible=False,
+    mutation_aspect=0,
 )
 handles.append("NANOOS v5")
 labels.append("")
@@ -478,7 +488,9 @@ leg = fig.legend(
 )
 fig.suptitle("OOI vs. NANOOS v5 Selected Tidal Constituents", fontsize=12, y=0.95)
 plt.savefig(
-    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v5.png", dpi=300, bbox_inches="tight"
+    FIGURES_DIR / "ttide_velocity_nanoos_ooi_v5.png",
+    dpi=300,
+    bbox_inches="tight",
 )
 
 # %%
@@ -486,10 +498,12 @@ vel = velocity_v5.copy(deep=True)
 
 # %%
 velocity_v5.sel(time=OOI_TIME).u[-1] = np.full(
-    velocity_v5.sel(time=OOI_TIME).u.shape[-1], 0.01
+    velocity_v5.sel(time=OOI_TIME).u.shape[-1],
+    0.01,
 )  # set the last depth to value
 velocity_v5.sel(time=OOI_TIME).v[-1] = np.full(
-    velocity_v5.sel(time=OOI_TIME).v.shape[-1], 0
+    velocity_v5.sel(time=OOI_TIME).v.shape[-1],
+    0,
 )  # set the last depth to value
 
 # %%
@@ -516,7 +530,11 @@ for const in constituents:
 axs[2].set_xlim(0, 180)
 handles, labels = axs[0].get_legend_handles_labels()
 proxy = mpatches.FancyBboxPatch(
-    xy=(0, 0), width=0, height=0, visible=False, mutation_aspect=0
+    xy=(0, 0),
+    width=0,
+    height=0,
+    visible=False,
+    mutation_aspect=0,
 )
 handles.append("NANOOS v5")
 labels.append("")

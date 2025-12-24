@@ -32,6 +32,9 @@ from scipy.stats import distributions
 from tqdm import tqdm
 
 # %%
+FIG_SAVE_FMT = "png"
+
+# %%
 NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
@@ -210,7 +213,7 @@ def _plot_wind_time_series(
         ha="left",
         zorder=2,
     )
-    ax.set_ylabel("Along-shelf\nWind Stress [$\\mathsf{N\\;m^{-2}}$]")
+    ax.set_ylabel("Along-shelf wind stress\n[$\\mathsf{N\\;m^{-2}}$]")
     ax.legend(ncols=2, loc="upper right", frameon=True, framealpha=1, columnspacing=1)
 
 
@@ -273,6 +276,7 @@ def _plot_nitrate_time_series(  # noqa: PLR0913; many arguments are fine here
     ax: plt.Axes,
     nitrate: xr.Dataset,
     year: int,
+    location: str,
     max_nitrate_conc: float,
     max_depth: float,
 ) -> None:
@@ -324,7 +328,12 @@ def _plot_nitrate_time_series(  # noqa: PLR0913; many arguments are fine here
     # Format y-axis
     ax.set_ylim(0, 40)
     ax.set_yticks([0, 10, 20, 30, 40])
-    ax.set_ylabel("Inshore Nitrate\nConc. [$\\mathsf{mmol \\; m^{-3}}$]")
+    if location.lower() == "midshelf":
+        ax.set_ylabel("Midshelf nitrate conc.\n[$\\mathsf{mmol \\; m^{-3}}$]")
+    elif location.lower() == "inner":
+        ax.set_ylabel("Inshore nitrate conc.\n[$\\mathsf{mmol \\; m^{-3}}$]")
+    else:
+        ax.set_ylabel("Nitrate conc.\n[$\\mathsf{mmol \\; m^{-3}}$]")
 
     # Add colorbar
     cax = ax.inset_axes([1.02, 0, 0.02, 1])
@@ -349,7 +358,7 @@ def _plot_chlorophyll_time_series(
         linewidth=2,
         color="#228833",
     )
-    ax.set_ylabel("Estimated Chlorophyll\n[$\\mathsf{mg \\; m^{-3}}$]")
+    ax.set_ylabel("Estimated chlorophyll\n[$\\mathsf{mg \\; m^{-3}}$]")
     ax.set_ylim(0, 25)
 
 
@@ -382,7 +391,7 @@ def plot_wind_velocity_nitrate_time_series(  # noqa: PLR0913; long arguments are
     # Don't show plot if saving
     if save:
         plt.ioff()
-    fig, axs = plt.subplots(5, 1, figsize=(6, 10), sharex=True, layout="constrained")
+    fig, axs = plt.subplots(5, 1, figsize=(10, 10), sharex=True, layout="constrained")
 
     axs = cast("list[plt.Axes]", list(axs))
     fig.align_ylabels(axs)
@@ -390,8 +399,8 @@ def plot_wind_velocity_nitrate_time_series(  # noqa: PLR0913; long arguments are
     # Plot each time series
     _plot_wind_time_series(axs[0], wind, year)
     _plot_velocity_time_series(axs[1], velocity, year)
-    _plot_nitrate_time_series(fig, axs[2], inner_nitrate, year, max_nitrate_conc, max_inner_shelf_depth)
-    _plot_nitrate_time_series(fig, axs[3], midshelf_nitrate, year, max_nitrate_conc, max_midshelf_depth)
+    _plot_nitrate_time_series(fig, axs[2], inner_nitrate, year, "inner", max_nitrate_conc, max_inner_shelf_depth)
+    _plot_nitrate_time_series(fig, axs[3], midshelf_nitrate, year, "midshelf", max_nitrate_conc, max_midshelf_depth)
     _plot_chlorophyll_time_series(axs[4], inner_shelf_chlorophyll, year)
 
     # Add panel labels and turn off minor ticks
@@ -407,9 +416,10 @@ def plot_wind_velocity_nitrate_time_series(  # noqa: PLR0913; long arguments are
 
     if save:
         plt.savefig(
-            FIGURES_DIR / f"manuscript/si/wind-nitrate-time-series-{year}.pdf",
-            format="pdf",
+            FIGURES_DIR / f"manuscript/si/{FIG_SAVE_FMT}/wind-nitrate-time-series-{year}.{FIG_SAVE_FMT}",
+            format=FIG_SAVE_FMT,
             bbox_inches="tight",
+            dpi=600,
         )
     # Manually show plot if not saving
     if not save:
@@ -432,11 +442,11 @@ for i in tqdm(range(2014, 2025)):
 
 # %%
 midshelf_depth_integrate = midshelf_nitrate.copy()
-fig, axs = plt.subplots(1, 1, figsize=(3, 3), sharex=True)
+fig, axs = plt.subplots(1, 1, figsize=(5, 4), sharex=True)
 axs.plot(
     midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
     midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 80,
-    color="black",
+    color="#004488",
     label="Mid-shelf",
 )
 axs.fill_between(
@@ -460,13 +470,13 @@ axs.fill_between(
     )
     / 80,
     alpha=0.5,
-    color="gray",
+    color="#004488",
 )
 
 axs.plot(
     inner_nitrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
     inner_nitrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 25,
-    color="black",
+    color="#BB5566",
     ls="--",
     label="Inner-shelf",
 )
@@ -487,7 +497,7 @@ axs.fill_between(
     )
     / 25,
     alpha=0.5,
-    color="gray",
+    color="#BB5566",
 )
 
 axs.set_xlim(4, 10)
@@ -495,4 +505,14 @@ axs.set_ylim(0, 25)
 axs.minorticks_off()
 axs.legend(loc="lower right")
 axs.xaxis.set_major_formatter(lambda x, pos: calendar.month_abbr[int(x)])  # noqa: ARG005; `pos` is necessary but unused
-axs.set_ylabel("Depth-Averaged Nitrate Conc. [$\\mathsf{mmol \\; m^{-3}}$]")
+axs.set_ylabel("Depth mean nitrate conc. [$\\mathsf{mmol \\; m^{-3}}$]")
+
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/monthly-depth-mean-nitrate.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+    dpi=600,
+)
+
+# %%
+wind

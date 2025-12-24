@@ -44,18 +44,9 @@ HTML("""
 NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
-VEL_PATH_V1 = (
-    DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
-)
-VEL_PATH_V4 = (
-    DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
-)
-VEL_PATH_V5 = (
-    DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
-)
+VEL_PATH_V1 = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise.nc"
+VEL_PATH_V4 = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
+VEL_PATH_V5 = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise_v5.nc"
 
 # %%
 velocity = xr.open_dataset(VEL_PATH_V1)
@@ -116,7 +107,7 @@ def plot_velocity(depth, variable):
         )
         ax.set_title(str(year))
         axs3[0].set_ylabel("OOI NH10 Velocity (m/s)")
-    for ax in zip(axs1, axs2, axs3):
+    for ax in zip(axs1, axs2, axs3, strict=False):
         for a in ax:
             a.xaxis.set_major_locator(mdates.MonthLocator())
             a.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
@@ -144,8 +135,7 @@ globec = (
 nanoos = (
     velocity[variable.value]
     .where(
-        (velocity.time > np.datetime64("2005-01-01"))
-        & (velocity.time < np.datetime64("2015-01-01")),
+        (velocity.time > np.datetime64("2005-01-01")) & (velocity.time < np.datetime64("2015-01-01")),
         drop=True,
     )
     .dropna(dim="time")
@@ -154,7 +144,7 @@ nanoos = (
 )
 ooi = (
     velocity[variable.value]
-    .where((velocity.time > np.datetime64("2015-01-01")))
+    .where(velocity.time > np.datetime64("2015-01-01"))
     .dropna(dim="time")
     .dropna(dim="depth")
     .sel(depth=depth.value)
@@ -215,8 +205,8 @@ display(
             classes=["dataframe", "table"],
             float_format="{:.4f}".format,
             formatters={"Range": lambda x: f"[{x[0]:.2f}, {x[1]:.2f}]"},
-        )
-    )
+        ),
+    ),
 )
 
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -254,13 +244,13 @@ globec_ooi_ttest = ttest_ind_from_stats(
     equal_var=False,
 )
 print(
-    f"{Style.BRIGHT}{'Globec vs Nanoos:':<18}{Style.RESET_ALL}t-statistic = {globec_nanoos_ttest.statistic:.2f}, p-value = {globec_nanoos_ttest.pvalue:.4f}"
+    f"{Style.BRIGHT}{'Globec vs Nanoos:':<18}{Style.RESET_ALL}t-statistic = {globec_nanoos_ttest.statistic:.2f}, p-value = {globec_nanoos_ttest.pvalue:.4f}",
 )
 print(
-    f"{Style.BRIGHT}{'OOI vs Nanoos:':<18}{Style.RESET_ALL}t-statistic = {ooi_nanoos_ttest.statistic:.2f}, p-value = {ooi_nanoos_ttest.pvalue:.4f}"
+    f"{Style.BRIGHT}{'OOI vs Nanoos:':<18}{Style.RESET_ALL}t-statistic = {ooi_nanoos_ttest.statistic:.2f}, p-value = {ooi_nanoos_ttest.pvalue:.4f}",
 )
 print(
-    f"{Style.BRIGHT}{'Globec vs OOI:':<18}{Style.RESET_ALL}t-statistic = {globec_ooi_ttest.statistic:.2f}, p-value = {globec_ooi_ttest.pvalue:.4f}"
+    f"{Style.BRIGHT}{'Globec vs OOI:':<18}{Style.RESET_ALL}t-statistic = {globec_ooi_ttest.statistic:.2f}, p-value = {globec_ooi_ttest.pvalue:.4f}",
 )
 
 # %% [markdown]
@@ -292,7 +282,11 @@ def plot_velocity_v(depth, variable, deployment):
     plt.clf()
     plt.suptitle(f"{variable} at {depth} m")
     fig, (axs1, axs2, axs3) = plt.subplots(
-        3, 3, figsize=(15, 10), sharex="col", sharey=True
+        3,
+        3,
+        figsize=(15, 10),
+        sharex="col",
+        sharey=True,
     )
     if deployment == "GLOBEC (1997-2005)":
         years = range(1999, 2002)
@@ -331,7 +325,7 @@ def plot_velocity_v(depth, variable, deployment):
         ax.set_title(str(year))
         axs3[0].set_ylabel("V5-V1 NH10 Velocity (m/s)")
         print(np.nanmean(np.abs(vel_v5 - vel_v1)), np.nanstd(np.abs(vel_v5 - vel_v1)))
-    for ax in zip(axs1, axs2, axs3):
+    for ax in zip(axs1, axs2, axs3, strict=False):
         for a in ax:
             a.xaxis.set_major_locator(mdates.MonthLocator())
             a.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
@@ -401,8 +395,6 @@ axs[2].set_ylim(ylim)
 # %%
 plt.plot(
     velocity_v1.depth,
-    velocity_v1["u"]
-    .sel(time=slice(np.datetime64("2019-01-01"), np.datetime64("2019-06-01")))
-    .mean(dim="time"),
+    velocity_v1["u"].sel(time=slice(np.datetime64("2019-01-01"), np.datetime64("2019-06-01"))).mean(dim="time"),
     label="V1",
 )

@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: .venv
+#     display_name: nitrate-upwelling
 #     language: python
 #     name: python3
 # ---
@@ -138,7 +138,7 @@ idx = np.argmin(np.abs(np.abs(h) - half_amp))
 cutoff_freq = w[idx]  # now in units of Nyquist (0.5 cycles/sample)
 
 print(
-    f"Half amplitude (-3dB) cutoff frequency (normalized to Nyquist): {cutoff_freq:.3f}"
+    f"Half amplitude (-3dB) cutoff frequency (normalized to Nyquist): {cutoff_freq:.3f}",
 )
 
 
@@ -196,11 +196,7 @@ plt.plot(fft.fftshift(fft.fftfreq(10)), (fft.fftshift(fft_b.imag)))
 # Generate sample signal: 1 Hz + 20 Hz sine waves with noise
 fs = 100.0  # Sample rate (Hz)
 t = np.arange(0, 2.0, 1 / fs)  # 2 seconds of data
-signal = (
-    np.sin(2 * np.pi * 1 * t)
-    + 0.5 * np.sin(2 * np.pi * 20 * t)
-    + 0.3 * np.random.randn(len(t))
-)
+signal = np.sin(2 * np.pi * 1 * t) + 0.5 * np.sin(2 * np.pi * 20 * t) + 0.3 * np.random.randn(len(t))
 
 # IIR Filter Design: Butterworth lowpass at 5 Hz
 b_iir, a_iir = butter(N=4, Wn=5, btype="low", fs=fs)
@@ -243,9 +239,7 @@ plt.show()
 # Extend signal duration to 5 seconds (500 samples)
 t_long = np.arange(0, 5.0, 1 / fs)
 signal_long = (
-    np.sin(2 * np.pi * 1 * t_long)
-    + 0.5 * np.sin(2 * np.pi * 20 * t_long)
-    + 0.3 * np.random.randn(len(t_long))
+    np.sin(2 * np.pi * 1 * t_long) + 0.5 * np.sin(2 * np.pi * 20 * t_long) + 0.3 * np.random.randn(len(t_long))
 )
 
 # Apply zero-phase filtering using filtfilt
@@ -278,10 +272,18 @@ plt.grid(True)
 
 plt.subplot(4, 1, 4)
 plt.plot(
-    t_long, filtered_iir_filtfilt_long, label="IIR filtfilt", color="blue", alpha=0.7
+    t_long,
+    filtered_iir_filtfilt_long,
+    label="IIR filtfilt",
+    color="blue",
+    alpha=0.7,
 )
 plt.plot(
-    t_long, filtered_fir_filtfilt_long, label="FIR filtfilt", color="green", alpha=0.7
+    t_long,
+    filtered_fir_filtfilt_long,
+    label="FIR filtfilt",
+    color="green",
+    alpha=0.7,
 )
 plt.title("Overlay: IIR vs FIR (Zero-Phase Filtered)")
 plt.xlabel("Time [s]")
@@ -334,7 +336,10 @@ fs = 1  # Assuming sample spacing is 1
 plt.figure(figsize=(12, 8))
 for win in windows:
     f, Pxx = periodogram(
-        y_fir_filt, fs=fs, window=get_window(win, len(y_fir_filt)), scaling="density"
+        y_fir_filt,
+        fs=fs,
+        window=get_window(win, len(y_fir_filt)),
+        scaling="density",
     )
     label = win if isinstance(win, str) else f"{win[0].capitalize()} (β={win[1]})"
     plt.semilogy(f, Pxx, label=label)
