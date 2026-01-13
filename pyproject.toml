@@ -47,6 +47,11 @@ ignore = [
     "PLR2004", # Magic value used in comparison; need to fix in empirical model notebook, but too big for now
 ]
 
+[tool.ruff.lint.extend-per-file-ignores]
+"notebooks/*.py" = [
+    "ALL",  # ignore all rules for jupytext scripts
+]
+
 
 [tool.ruff.lint.isort]
 known-local-folder = ["functions", "ttide_py", "ttide"]
