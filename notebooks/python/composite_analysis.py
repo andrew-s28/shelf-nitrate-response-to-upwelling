@@ -30,6 +30,7 @@ from tqdm import tqdm
 # %%
 # For plotting months with colormap
 colors = cmaps["viridis"](np.linspace(0, 1, 6))
+linestyles = ["-", "--", "-", "--", "-", "--"]
 
 FIG_SAVE_FMT = "png"
 
@@ -257,11 +258,11 @@ for i, m in enumerate(composite_stress_monthly["month"].sel(month=slice(4, 9))):
     data = composite_stress_monthly.sel(month=m)
     nstar = data["count"].mean(dim="time")
     nstar_string = f"N*$\\approx${nstar:.0f}"
-    ax.plot(days, data["mean"], c=colors[i], label=f"{calendar.month_abbr[m.values]}\n{nstar_string}")
+    ax.plot(days, data["mean"], c=colors[i], ls=linestyles[i], label=f"{calendar.month_abbr[m.values]}\n{nstar_string}")
     ax.fill_between(
         days,
-        data["mean"] - data["ci"],  # pyright: ignore[reportArgumentType]
-        data["mean"] + data["ci"],  # pyright: ignore[reportArgumentType]
+        data["mean"] - data["ci"],
+        data["mean"] + data["ci"],
         ls="None",
         edgecolor="None",
         facecolor=colors[i],
@@ -354,6 +355,7 @@ for i, v in enumerate(composite_vel_monthly_cs_slice["time"]):
             -data["depth"],
             label=calendar.month_abbr[m.values],
             c=colors[j],
+            ls=linestyles[j],
         )
         axs[i].minorticks_off()
         axs[i].set_ylim([-80, 0])
@@ -629,10 +631,11 @@ for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
             -data["depth"],
             label=calendar.month_abbr[m.values],
             c=colors[j],
+            ls=linestyles[j],
         )
         axs[i].minorticks_off()
         axs[i].set_ylim([-80, 0])
-        axs[i].set_xlim([-2, 2])
+        axs[i].set_xlim([-1.5, 1.5])
         axs[i].text(
             0.02,
             0.99,
@@ -735,12 +738,14 @@ for i, m in enumerate(
         days,
         flux_bottom.sel(month=m) - flux_bottom.sel(month=m).sel(time=0),
         color=colors[i],
+        ls=linestyles[i],
         label=calendar.month_abbr[m],
     )
     axs[1].plot(
         days,
         flux_middle.sel(month=m) - flux_middle.sel(month=m).sel(time=0),
         color=colors[i],
+        ls=linestyles[i],
         label=calendar.month_abbr[m],
     )
 
