@@ -37,12 +37,14 @@ line-length = 120
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "FURB177",  # implicit-cwd; Path.resolve() is necessary for relative paths in Python notebooks
-    "CPY001",   # missing-copyright-notice; project is MIT licensed
-    "ERA001",   # commented-out-code; can't be used with jupytext scripts
-    "D100",     # undocumented-public-module; don't require docstring for jupytext scripts
-    "INP001",   # implicit-namespace-package; don't enforce __init__.py files for jupytext scripts
-    "T201",     # print; printing is fine in notebooks
+    "FURB177", # implicit-cwd; Path.resolve() is necessary for relative paths in Python notebooks
+    "CPY001",  # missing-copyright-notice; project is MIT licensed
+    "ERA001",  # commented-out-code; can't be used with jupytext scripts
+    "D100",    # undocumented-public-module; don't require docstring for jupytext scripts
+    "INP001",  # implicit-namespace-package; don't enforce __init__.py files for jupytext scripts
+    "T201",    # print; printing is fine in notebooks
+    "RET504",  # Unnecessary assignment to `idx` before `return` statement; prefer explicit variable assignment for clarity
+    "PLR2004", # Magic value used in comparison; need to fix in empirical model notebook, but too big for now
 ]
 
 
