@@ -19,12 +19,8 @@ import xarray as xr
 from scipy import signal as sig
 
 if TYPE_CHECKING:
-    from typing import TypeVar
-
-    from numpy import double, float64, floating
-    from numpy.typing import NBitBase, NDArray
-
-    T = floating[TypeVar("T", bound=NBitBase)]
+    from numpy import floating
+    from numpy.typing import NDArray
 
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -32,15 +28,13 @@ DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
 VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_v4.nc"
-VELOCITY_SAVE_FILE = (
-    DATA_DIR
-    / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
-)
+VELOCITY_SAVE_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
 
 
 def princax(
-    u: NDArray[double] | xr.DataArray, v: NDArray[double] | xr.DataArray,
-) -> tuple[double, double, double]:
+    u: NDArray[floating] | xr.DataArray,
+    v: NDArray[floating] | xr.DataArray,
+) -> tuple[floating, floating, floating]:
     """Determine the principal axis of variance for the east and north velocities defined by u and v.
 
     Args:
@@ -87,10 +81,10 @@ def princax(
 
 
 def rot(
-    u: NDArray[T] | xr.DataArray,
-    v: NDArray[T] | xr.DataArray,
-    theta: float | double | floating,
-) -> tuple[NDArray[T], NDArray[T]]:
+    u: NDArray[floating] | xr.DataArray,
+    v: NDArray[floating] | xr.DataArray,
+    theta: float | floating,
+) -> tuple[NDArray[floating], NDArray[floating]]:
     """Rotates a vector counter clockwise or a coordinate system clockwise.
 
     Designed to be used with theta output from princax(u, v).
@@ -147,40 +141,38 @@ with suppress(ValueError):
 # velocity["v_interp"].loc[{"time": OOI_TIME}] = velocity_ooi["v_interp"]
 
 # get filtering weights for 40 hour low pass filter - assumes 1 hour time step in data
-wts: NDArray[float64] = sig.firwin(101, 1 / 40, window="lanczos", fs=1)
+wts: NDArray[floating] = sig.firwin(101, 1 / 40, window="lanczos", fs=1)
+
+# filter east/north velocities with zero phase shift filter (filtfilt) along time axis (axis=1)
+evel_filt: NDArray[floating] = sig.filtfilt(wts, 1, velocity["u"].values, axis=1)
+nvel_filt: NDArray[floating] = sig.filtfilt(wts, 1, velocity["v"].values, axis=1)
 
 # compute cross-shore and along-shore velocities based on principal axis of variance
-evel_filt: NDArray[float64] = sig.filtfilt(wts, 1, velocity["u"].values, axis=1)
-nvel_filt: NDArray[float64] = sig.filtfilt(wts, 1, velocity["v"].values, axis=1)
 theta, major, minor = princax(
-    np.nanmean(evel_filt, axis=1), np.nanmean(nvel_filt, axis=1),
+    np.nanmean(evel_filt, axis=1),
+    np.nanmean(nvel_filt, axis=1),
 )
 cs_vel, as_vel = rot(evel_filt, nvel_filt, theta)
 velocity["u_filt"] = (["depth", "time"], evel_filt)
 velocity["v_filt"] = (["depth", "time"], nvel_filt)
 velocity["cs"] = (["depth", "time"], cs_vel)
 velocity["cs"] -= velocity["cs"].mean(
-    dim="depth", keep_attrs=True,
+    dim="depth",
+    keep_attrs=True,
 )  # remove depth average
 velocity["as"] = (["depth", "time"], as_vel)
 
 # compute cross-shore and along-shore velocities based on meandering along-shelf flow as in McCabe et al. (2015)
 phi = np.arctan2(np.nanmean(as_vel, axis=0), np.nanmean(cs_vel, axis=0))
 u_n = np.array(
-    [
-        -u * np.sin(p) + v * np.cos(p)
-        for u, v, p in zip(cs_vel.T, as_vel.T, phi, strict=True)
-    ],
+    [-u * np.sin(p) + v * np.cos(p) for u, v, p in zip(cs_vel.T, as_vel.T, phi, strict=True)],
 ).T
 
 # use masked array for dot product to avoid NaN issues
 u_n_m = np.ma.array(u_n, mask=np.isnan(u_n))
 u_m = np.ma.array(cs_vel, mask=np.isnan(cs_vel))
 u_p = np.ma.array(
-    [
-        (np.ma.dot(un, u) / np.ma.dot(u, u)) * u
-        for u, un in zip(u_m.T, u_n_m.T, strict=True)
-    ],
+    [(np.ma.dot(un, u) / np.ma.dot(u, u)) * u for u, un in zip(u_m.T, u_n_m.T, strict=True)],
 ).T
 
 velocity["cs_proj"] = (["depth", "time"], u_p)

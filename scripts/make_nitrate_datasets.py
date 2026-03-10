@@ -22,16 +22,16 @@ DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
 INNER_SHELF_NITRATE_FILE = Path(
-    "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17.nc",
+    "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26.nc",
 )
 INNER_SHELF_NITRATE_SAVE_FILE = Path(
-    "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc",
+    "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc",
 )
 MID_SHELF_NITRATE_FILE = Path(
-    "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14.nc",
+    "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15.nc",
 )
 MID_SHELF_NITRATE_SAVE_FILE = Path(
-    "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc",
+    "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc",
 )
 
 

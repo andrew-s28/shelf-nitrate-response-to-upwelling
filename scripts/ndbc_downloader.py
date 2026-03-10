@@ -4,25 +4,17 @@ import argparse
 import io
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import requests
 import xarray as xr
 from bs4 import BeautifulSoup
+from numpy import floating
+from numpy.typing import NDArray
 from pycoare import coare_35 as c35
 from scipy import signal
 from tqdm import tqdm as tq
-
-if TYPE_CHECKING:
-    from typing import TypeVar
-
-    from numpy import floating
-    from numpy.typing import NBitBase
-
-    T = floating[TypeVar("T", bound=NBitBase)]
-
-Array = xr.DataArray | np.ndarray | float
 
 
 def search_for_float(pattern: str, string: str, not_found_msg: str = "Value not found.") -> float:
@@ -155,13 +147,13 @@ def list_files(url: str, tag: str = r".*\.nc$") -> list[str]:
 
     soup = BeautifulSoup(page, "html.parser")
     pattern = re.compile(tag)
-    nc_files = [node.get("href") for node in soup.find_all("a", string=pattern)]  # pyright: ignore[reportAttributeAccessIssue]
+    nc_files = [node.get("href") for node in soup.find_all("a", string=pattern)]  # ty:ignore[unresolved-attribute]
 
     nc_files = [re.sub(r"catalog\.html\?dataset=", r"", str(file)) for file in nc_files]
-    return nc_files  # noqa: RET504
+    return nc_files
 
 
-def princax(u: Array, v: Array) -> tuple[float, float, float]:
+def princax(u: NDArray[floating], v: NDArray[floating]) -> tuple[float, float, float]:
     """Determine the principal axis of variance for the east and north velocities defined by u and v.
 
     Args:
@@ -202,7 +194,7 @@ def princax(u: Array, v: Array) -> tuple[float, float, float]:
     return theta, major, minor
 
 
-def rot(u: Array, v: Array, theta: float) -> tuple[Array, Array]:
+def rot(u: NDArray[floating], v: NDArray[floating], theta: float) -> tuple[NDArray[floating], NDArray[floating]]:
     """Rotate a vector counter clockwise or a coordinate system clockwise.
 
     Args:
@@ -222,7 +214,11 @@ def rot(u: Array, v: Array, theta: float) -> tuple[Array, Array]:
     return ur, vr
 
 
-def uv_from_spddir(speed: Array, direction: Array, which: str = "from") -> tuple[Array, Array]:
+def uv_from_spddir(
+    speed: NDArray[floating],
+    direction: NDArray[floating],
+    which: str = "from",
+) -> tuple[NDArray[floating], NDArray[floating]]:
     """Compute east and west vectors of velocity vector.
 
     Args:
@@ -252,7 +248,11 @@ def uv_from_spddir(speed: Array, direction: Array, which: str = "from") -> tuple
     return (u, v)
 
 
-def spddir_from_uv(u: Array, v: Array, which: Literal["from", "to"] = "from") -> tuple[Array, Array]:
+def spddir_from_uv(
+    u: NDArray[floating],
+    v: NDArray[floating],
+    which: Literal["from", "to"] = "from",
+) -> tuple[NDArray[floating], NDArray[floating]]:
     """Compute speed and direction from east and north vectors of velocity vector.
 
     Args:
@@ -280,7 +280,7 @@ def spddir_from_uv(u: Array, v: Array, which: Literal["from", "to"] = "from") ->
     return (speed, direction)
 
 
-def relative_humidity_from_dewpoint(t: Array, t_dew: Array) -> Array:
+def relative_humidity_from_dewpoint(t: NDArray[floating], t_dew: NDArray[floating]) -> NDArray[floating]:
     """Relative humidity as a function of air temp. and dew point temp.
 
     Args:
@@ -294,7 +294,7 @@ def relative_humidity_from_dewpoint(t: Array, t_dew: Array) -> Array:
     e = 610.94 * np.exp(17.625 * t_dew / (t_dew + 243.04))
     es = 610.94 * np.exp(17.625 * t / (t + 243.04))
     rh = e / es * 100
-    return rh  # noqa: RET504
+    return rh
 
 
 # parse command line arguments
@@ -377,22 +377,16 @@ ds = ds.assign_coords(latitude=mean_lat, longitude=mean_lon)
 
 # Convert wave period to seconds to avoid issues with timedelta64
 if "average_wpd" in ds.variables:
-    ds["average_wpd"] = ds["average_wpd"] / np.timedelta64(1, "s")  # noqa: PLR6104
+    ds["average_wpd"] = ds["average_wpd"] / np.timedelta64(1, "s")
     ds["average_wpd"] = ds["average_wpd"].astype("float32")
     ds["average_wpd"].attrs["units"] = "s"
 if "dominant_wpd" in ds.variables:
-    ds["dominant_wpd"] = ds["dominant_wpd"] / np.timedelta64(1, "s")  # noqa: PLR6104
+    ds["dominant_wpd"] = ds["dominant_wpd"] / np.timedelta64(1, "s")
     ds["dominant_wpd"] = ds["dominant_wpd"].astype("float32")
     ds["dominant_wpd"].attrs["units"] = "s"
 
 # Get u and v components of wind velocity and apply optional filtering
 ds["wind_east"], ds["wind_north"] = uv_from_spddir(ds["wind_spd"], ds["wind_dir"])
-if args["filter"] is not None:
-    # get filtering weights for 33 hour low pass filter - assumes 1 hour time step in data
-    wts = signal.firwin(101, 1 / args["filter"][0], window="lanczos", fs=1)
-    ds["wind_east"] = (["time"], signal.filtfilt(wts, 1, ds["wind_east"].values, axis=0))
-    ds["wind_north"] = (["time"], signal.filtfilt(wts, 1, ds["wind_north"].values, axis=0))
-    ds["wind_spd"], ds["wind_dir"] = spddir_from_uv(ds["wind_east"], ds["wind_north"])
 
 # fill bad values with mean for COARE inputs
 ds["rh"] = relative_humidity_from_dewpoint(ds.air_temperature, ds.dewpt_temperature)
@@ -422,6 +416,16 @@ ds["coare_east"], ds["coare_north"] = uv_from_spddir(ds["coare_mag"], ds["wind_d
 
 # drop filled variables
 ds = ds.drop_vars(["rh_filled", "air_temperature_filled", "sea_surface_temperature_filled"])
+
+if args["filter"] is not None:
+    # get filtering weights for 33 hour low pass filter - assumes 1 hour time step in data
+    wts = signal.firwin(101, 1 / args["filter"][0], window="lanczos", fs=1)
+    ds["wind_east"] = (["time"], signal.filtfilt(wts, 1, ds["wind_east"].values, axis=0))
+    ds["wind_north"] = (["time"], signal.filtfilt(wts, 1, ds["wind_north"].values, axis=0))
+    ds["wind_spd"], ds["wind_dir"] = spddir_from_uv(ds["wind_east"], ds["wind_north"])
+    ds["coare_east"] = (["time"], signal.filtfilt(wts, 1, ds["coare_east"].values, axis=0))
+    ds["coare_north"] = (["time"], signal.filtfilt(wts, 1, ds["coare_north"].values, axis=0))
+    ds["coare_mag"], ds["wind_dir"] = spddir_from_uv(ds["coare_east"], ds["coare_north"])
 
 # rotate wind velocity and wind stress into principal axis
 if args["princax"] is not None:

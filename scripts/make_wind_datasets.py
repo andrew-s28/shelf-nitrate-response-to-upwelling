@@ -1,6 +1,4 @@
-"""
-This script processes OOI nitrate profiler data from the inner and mid shelf sites that have been downloaded using ooi-profiler-nitrate-retriever.
-"""
+"""Processes NDBC wind datasets to add exponentially decaying recent average W_kd."""
 
 # /// script
 # requires-python = ">=3.13"
@@ -24,7 +22,7 @@ from scipy.integrate import simpson
 from tqdm import tqdm as tq
 
 if TYPE_CHECKING:
-    from numpy import float_, int_
+    from numpy import floating
     from numpy.typing import NDArray
 
 
@@ -37,15 +35,13 @@ WIND_SAVE_FILE = Path("NDBC_46050/46050_wind_binned_with_w5d_w8d.nc")
 
 
 def ws_integrand(
-    tp: NDArray[float_] | NDArray[int_],
-    t: float | int,
-    tau: NDArray[float_] | NDArray[int_],
-    k: float | int,
-    rho: float | int = 1025,
-) -> NDArray[float_] | NDArray[int_]:
-    """
-    Integrand for computation of 8-day exponentially weighted integral of
-    wind stress. See Austin and Barth, 2002.
+    tp: NDArray[floating],
+    t: float | floating,
+    tau: NDArray[floating],
+    k: float | floating,
+    rho: float | floating = 1025,
+) -> NDArray[floating]:
+    """Integrand for computation of 8-day exponentially weighted integral of wind stress. See Austin and Barth, 2002.
 
     Args:
         tp (array): integration variable, time
@@ -56,6 +52,7 @@ def ws_integrand(
 
     Returns:
         array: integrand for use in scipy.integrate and computation of W8d
+
     """
     return tau[: t + 1] / rho * np.exp((tp[: t + 1] - t) / k)
 
@@ -75,7 +72,7 @@ wind["day_num"] = (["time"], np.arange(len(wind.time)))
 # compute w8d
 avg_len = 8
 fout = np.nan * np.zeros(len(wind["day_num"]))
-for i, f in enumerate(tq(fout, desc="Calculating W8d")):
+for i, _f in enumerate(tq(fout, desc="Calculating W8d")):
     temp = ws_integrand(
         wind["day_num"].values[i - avg_len * 5 : i],
         wind["day_num"].values[i],
@@ -88,16 +85,13 @@ for i, f in enumerate(tq(fout, desc="Calculating W8d")):
         continue
     if np.any(np.isnan(wind.coare_y[i - avg_len * 5 : i])):
         continue
-    fout[i] = (
-        simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask])
-        / avg_len
-    )
+    fout[i] = simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask]) / avg_len
 wind["w8d"] = (["time"], fout)
 
 # compute w5d
 avg_len = 5
 fout = np.nan * np.zeros(len(wind["day_num"]))
-for i, f in enumerate(tq(fout, desc="Calculating W5d")):
+for i, _f in enumerate(tq(fout, desc="Calculating W5d")):
     temp = ws_integrand(
         wind["day_num"].values[i - avg_len * 5 : i],
         wind["day_num"].values[i],
@@ -110,14 +104,11 @@ for i, f in enumerate(tq(fout, desc="Calculating W5d")):
         continue
     if np.any(np.isnan(wind.coare_y[i - avg_len * 5 : i])):
         continue
-    fout[i] = (
-        simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask])
-        / avg_len
-    )
+    fout[i] = simpson(temp[mask], x=wind["day_num"].values[i - avg_len * 5 : i][mask]) / avg_len
 wind["w5d"] = (["time"], fout)
 
 wind.attrs["created_by"] = "make_datasets.py"
-wind.attrs["created_on"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+wind.attrs["created_on"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # noqa: DTZ005
 
 wind.to_netcdf(
     DATA_DIR / WIND_SAVE_FILE,
