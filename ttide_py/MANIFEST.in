@@ -1,5 +1,0 @@
-include *.md
-
-recursive-include ttide *.py
-recursive-include ttide *.csv
-recursive-include ttide/data *.npy
