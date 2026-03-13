@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import warnings
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,8 +28,71 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
-VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_v4.nc"
-VELOCITY_SAVE_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
+VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_v5.nc"
+VELOCITY_SAVE_FILE = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
+
+warnings.filterwarnings(
+    "ignore",
+    "Mean of empty slice",
+    RuntimeWarning,
+)
+
+
+def extrapolate_bottom_velocity(
+    velocity: xr.Dataset,
+    max_depth: int = 70,
+) -> xr.Dataset:
+    """Extrapolate bottom velocity to zero using linear interpolation.
+
+    Args:
+        velocity (xr.Dataset): dataset containing east and north velocities
+        max_depth (int): maximum depth for original data, default is 70 m
+
+    Returns:
+        xr.Dataset: dataset with bottom velocity linearly extrapolated to zero
+
+    """
+    velocity = velocity.where(velocity["depth"] <= max_depth)
+
+    # we only want to set zeroes where there is data in the original
+    # i.e., selecting for times when there is at least one valid velocity measurement in the original profile
+    zeroes = xr.full_like(velocity.isel(depth=0), 0)
+    zeroes = zeroes.where(~velocity.isnull().all(dim="depth"))
+
+    # we also don't want to extrapolate if there isn't any valid data near the MAX_DEPTH we set earlier
+    zeroes = zeroes.where(~velocity.isnull().sel(depth=max_depth, method="nearest"))
+
+    # set the deepest value to zero
+    velocity[{"depth": -1}] = zeroes
+
+    # now use linear interpolation over a max gap of 20 m (2 m depth bins) to fill any remaining NaNs
+    # at this point, only bottom values should be remaining NaN, so this will extrapolate only the bottom values
+    velocity = velocity.interpolate_na(dim="depth", method="polynomial", order=1, limit=10)
+
+    return velocity
+
+
+def extrapolate_top_velocity(
+    velocity: xr.Dataset,
+    min_depth: int = 15,
+) -> xr.Dataset:
+    """Extrapolate top velocity using constant velocity extrapolation from the top-most depth.
+
+    Args:
+        velocity (xr.Dataset): dataset containing east and north velocities
+        min_depth (int): minimum depth for original data, default is 15 m
+
+    Returns:
+        xr.Dataset (velocity) - dataset with top velocity extrapolated to constant value from the top-most depth
+
+    """
+    # now mask out the surface and depths
+    velocity = velocity.where(velocity["depth"] >= min_depth)
+
+    # bfill will backfill the surface values with the nearest valid value, only within 20 m (2 m depth bins)
+    velocity = velocity.bfill(dim="depth", limit=10)
+
+    return velocity
 
 
 def princax(
@@ -126,58 +190,82 @@ with suppress(ValueError):
         },
     )
 
-# velocity["u_interp"] = velocity["u"].copy(deep=True)
-# velocity["v_interp"] = velocity["v"].copy(deep=True)
+# first interpolate any nan to fill gaps in the middle of the profiles
+velocity = velocity.interpolate_na(dim="depth", method="linear", max_gap=10)
 
-# # Split out OOI times for custom bottom interpolation
-# OOI_TIME = slice(np.datetime64("2015-04-01"), None)
-# velocity_ooi = velocity.sel(time=OOI_TIME)
-# # interpolate to set bottom velocities for OOI times
-# velocity_ooi["u_interp"][-1] = np.full(velocity_ooi["u"].shape[-1], 0.01)  # set the last depth to value
-# velocity_ooi["v_interp"][-1] = np.full(velocity_ooi["v"].shape[-1], 0)  # set the last depth to value
-# velocity_ooi = velocity_ooi.interpolate_na(dim="depth", method="linear", max_gap=10)
+# now extrapolate top and bottom velocities
+velocity = extrapolate_top_velocity(velocity)
+velocity = extrapolate_bottom_velocity(velocity)
 
-# velocity["u_interp"].loc[{"time": OOI_TIME}] = velocity_ooi["u_interp"]
-# velocity["v_interp"].loc[{"time": OOI_TIME}] = velocity_ooi["v_interp"]
+# resample to ensure hourly data for filtering, then transpose since it reorders coords for some reason
+velocity = velocity.resample(time="1h").mean().transpose("depth", "time")
 
-# get filtering weights for 40 hour low pass filter - assumes 1 hour time step in data
-wts: NDArray[floating] = sig.firwin(101, 1 / 40, window="lanczos", fs=1)
+# save places where velocity is not null to reapply mask after filtering
+mask = velocity["u"].notnull() | velocity["v"].notnull()
 
-# filter east/north velocities with zero phase shift filter (filtfilt) along time axis (axis=1)
-evel_filt: NDArray[floating] = sig.filtfilt(wts, 1, velocity["u"].values, axis=1)
-nvel_filt: NDArray[floating] = sig.filtfilt(wts, 1, velocity["v"].values, axis=1)
+num_taps = 101  # window length
+cutoff_freq = 1 / 33  # cutoff frequency in cycles per hour (for a 33 hour low pass filter)
+wts = xr.DataArray(sig.firwin(num_taps, cutoff_freq, window="lanczos", fs=1), dims=["time_win"])
 
-# compute cross-shore and along-shore velocities based on principal axis of variance
-theta, major, minor = princax(
-    np.nanmean(evel_filt, axis=1),
-    np.nanmean(nvel_filt, axis=1),
+# filter east/north velocities with zero phase shift filter along time axis
+velocity["u_filt"] = (
+    # apply filter once in the forward direction
+    velocity["u"]
+    .fillna(0)
+    .rolling(time=num_taps, center=True)
+    .construct(time="time_win")
+    .dot(wts)
+    # apply filter again in the backward direction to achieve zero phase shift
+    .isel(time=slice(None, None, -1))
+    .rolling(time=num_taps, center=True)
+    .construct(time="time_win")
+    .dot(wts)
 )
-cs_vel, as_vel = rot(evel_filt, nvel_filt, theta)
-velocity["u_filt"] = (["depth", "time"], evel_filt)
-velocity["v_filt"] = (["depth", "time"], nvel_filt)
-velocity["cs"] = (["depth", "time"], cs_vel)
-velocity["cs"] -= velocity["cs"].mean(
-    dim="depth",
-    keep_attrs=True,
-)  # remove depth average
-velocity["as"] = (["depth", "time"], as_vel)
+velocity["v_filt"] = (
+    # apply filter once in the forward direction
+    velocity["v"]
+    .fillna(0)
+    .rolling(time=num_taps, center=True)
+    .construct(time="time_win")
+    .dot(wts)
+    # apply filter again in the backward direction to achieve zero phase shift
+    .isel(time=slice(None, None, -1))
+    .rolling(time=num_taps, center=True)
+    .construct(time="time_win")
+    .dot(wts)
+)
+velocity["u_filt"] = velocity["u_filt"].where(mask)
+velocity["v_filt"] = velocity["v_filt"].where(mask)
+
+# compute cross-shore and along-shore velocities based on principal axis of variance of depth mean velocities
+theta, major, minor = princax(
+    velocity["u_filt"].mean(dim="depth").values,
+    velocity["v_filt"].mean(dim="depth").values,
+)
+
+# rotate into new coordinate system
+cs_vel, as_vel = rot(velocity["u_filt"].values, velocity["v_filt"].values, theta)
+
+velocity["u_cs"] = (velocity["u_filt"].dims, cs_vel)
+velocity["u_as"] = (velocity["v_filt"].dims, as_vel)
 
 # compute cross-shore and along-shore velocities based on meandering along-shelf flow as in McCabe et al. (2015)
-phi = np.arctan2(np.nanmean(as_vel, axis=0), np.nanmean(cs_vel, axis=0))
-u_n = np.array(
-    [-u * np.sin(p) + v * np.cos(p) for u, v, p in zip(cs_vel.T, as_vel.T, phi, strict=True)],
-).T
+# first find the time-varying angle of the strongest depth mean flow
+phi = xr.ufuncs.arctan2(
+    velocity["u_as"].mean(dim="depth"),
+    velocity["u_cs"].mean(dim="depth"),
+)
 
-# use masked array for dot product to avoid NaN issues
-u_n_m = np.ma.array(u_n, mask=np.isnan(u_n))
-u_m = np.ma.array(cs_vel, mask=np.isnan(cs_vel))
-u_p = np.ma.array(
-    [(np.ma.dot(un, u) / np.ma.dot(u, u)) * u for u, un in zip(u_m.T, u_n_m.T, strict=True)],
-).T
+# now compute the velocity component normal to that flow (Eqn. 3 in McCabe et al. 2015)
+u_n = -velocity["u_cs"] * xr.ufuncs.sin(phi) + velocity["u_as"] * xr.ufuncs.cos(phi)
 
-velocity["cs_proj"] = (["depth", "time"], u_p)
+# project normal component back into cross-shelf direction
+velocity["u_proj"] = u_n * -xr.ufuncs.sin(phi)
 
-velocity.attrs["created_by"] = "make_datasets.py"
+# finally, resample to daily means
+velocity = velocity.resample(time="1D").mean()
+
+velocity.attrs["created_by"] = "make_velocity_datasets.py"
 velocity.attrs["created_on"] = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
 velocity.attrs["description"] = (
     "Velocities from Stitch In Time dataset first filtered with a 33 hour low pass filtered using a Lanczos window."

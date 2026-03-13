@@ -433,7 +433,7 @@ if args["princax"] is not None:
 else:
     theta, _, _ = princax(ds["wind_east"], ds["wind_north"])
 
-ds["cs"], ds["as"] = rot(ds["wind_east"], ds["wind_north"], theta)
+ds["u_cs"], ds["u_as"] = rot(ds["wind_east"], ds["wind_north"], theta)
 ds["coare_x"], ds["coare_y"] = rot(ds["coare_east"], ds["coare_north"], theta)
 
 # add metadata
@@ -443,7 +443,7 @@ ds["coare_mag"].attrs = {"comment": "Magnitude of wind stress computed by COARE 
 ds["coare_east"].attrs = {"comment": "Eastwards wind stress computed by COARE v3.5", "units": "N/m^2"}
 ds["coare_north"].attrs = {"comment": "Northwards wind stress computed by COARE v3.5", "units": "N/m^2"}
 ds["rh"].attrs = {"comment": "Relative humidity computed from air and dewpoint temperature", "units": "%"}
-ds["cs"].attrs = {"comment": "Cross-shelf component of wind velocity computed by principal axis", "units": "m/s"}
+ds["u_cs"].attrs = {"comment": "Cross-shelf component of wind velocity computed by principal axis", "units": "m/s"}
 ds["as"].attrs = {"comment": "Along-shelf component of wind velocity computed by principal axis", "units": "m/s"}
 ds["coare_x"].attrs = {
     "comment": "Cross-shelf component of wind stress computed by principal axis",
