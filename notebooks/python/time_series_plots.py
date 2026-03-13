@@ -39,13 +39,13 @@ NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled_v2.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled_v2.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
+VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
 OPTAA_PATH = DATA_DIR / "CE01ISSM/ce01issm_optaa_processed.nc"
 FLORT_PATH = DATA_DIR / "CE01ISSM/ce01issm_flort_processed.nc"
 
@@ -59,24 +59,14 @@ velocity = xr.open_dataset(VEL_PATH)
 optaa = xr.open_dataset(OPTAA_PATH)
 flort = xr.open_dataset(FLORT_PATH)
 
-# bit of a lazy way to use the cs_proj variable, since the notebook is set up for cs
-if VELOCITY_VARIABLE == "cs_proj":
-    velocity = velocity.drop_vars("cs").rename({"cs_proj": "cs"})
-
-# resample midshelf nitrate to fill some of the gaps for composite calclulations
-midshelf_nitrate = midshelf_nitrate.resample(time="1D").mean()
-
-# interpolate velocity depths to match 1 meter bins in midshelf nitrate
-velocity = velocity.interp(depth=midshelf_nitrate.depth)
-
 # align optaa and flort datasets and average estimated chlorophyll
 flort = flort.drop_dims("stats")
 optaa_al, flort_al = xr.align(optaa.drop_duplicates("time"), flort.drop_duplicates("time"))
 
 inner_shelf_chlorophyll = xr.Dataset(
     {
-        "estimated_chlorophyll_flort": flort_al.estimated_chlorophyll,
-        "estimated_chlorophyll_optaa": optaa_al.estimated_chlorophyll,
+        "estimated_chlorophyll_flort": flort_al["estimated_chlorophyll"],
+        "estimated_chlorophyll_optaa": optaa_al["estimated_chlorophyll"],
     },
 )
 inner_shelf_chlorophyll["estimated_chlorophyll"] = inner_shelf_chlorophyll.to_array(dim="new").mean(dim="new")
@@ -227,7 +217,7 @@ def _plot_velocity_time_series(
     ax.axhline(0, zorder=1.5, color="k")
     ax.plot(
         velocity.time,
-        velocity.sel(depth=30).cs,
+        velocity.sel(depth=30)["u_proj"],
         linestyle="-",
         linewidth=1,
         label="30 m",
@@ -235,7 +225,7 @@ def _plot_velocity_time_series(
     )
     ax.plot(
         velocity.time,
-        velocity.sel(depth=70).cs,
+        velocity.sel(depth=70)["u_proj"],
         linestyle="-",
         linewidth=2,
         label="70 m",
@@ -271,18 +261,15 @@ def _plot_velocity_time_series(
     )
 
 
-def _plot_nitrate_time_series(  # noqa: PLR0913; many arguments are fine here
+def _plot_nitrate_time_series(
     fig: Figure,
     ax: plt.Axes,
     nitrate: xr.Dataset,
     year: int,
     location: str,
-    max_nitrate_conc: float,
-    max_depth: float,
 ) -> None:
     # Filter to year and max depth
     nitrate = nitrate.where(nitrate["time.year"] == year)
-    nitrate = nitrate.where(nitrate["depth"] < max_depth, drop=True)
     # Use negative depths for plotting
     nitrate["depth"] = -nitrate["depth"]
     nitrate = nitrate.sortby("depth")
@@ -303,23 +290,19 @@ def _plot_nitrate_time_series(  # noqa: PLR0913; many arguments are fine here
     # Plot each depth and deployment
     black_line_depths = np.arange(-80, 1, 10)
     for i, depth in enumerate(nitrate["depth"].to_numpy()):
-        for deployment in deployments:
-            nitrate_deployment = nitrate.where(nitrate["deployment"] == deployment).where(
-                nitrate["nitrate"] < max_nitrate_conc,
-            )
+        ax.plot(
+            nitrate.sel(depth=depth).time,
+            nitrate.sel(depth=depth).nitrate,
+            color=colors[i],
+            lw=0.5,
+        )
+        if depth in black_line_depths:
             ax.plot(
-                nitrate_deployment.sel(depth=depth).time,
-                nitrate_deployment.sel(depth=depth).nitrate,
-                color=colors[i],
-                lw=0.5,
+                nitrate.sel(depth=depth).time,
+                nitrate.sel(depth=depth).nitrate,
+                color="black",
+                lw=2,
             )
-            if depth in black_line_depths:
-                ax.plot(
-                    nitrate_deployment.sel(depth=depth).time,
-                    nitrate_deployment.sel(depth=depth).nitrate,
-                    color="black",
-                    lw=2,
-                )
 
     # Format x-axis
     dformatter = mdates.DateFormatter("%b")
@@ -362,7 +345,7 @@ def _plot_chlorophyll_time_series(
     ax.set_ylim(0, 25)
 
 
-def plot_wind_velocity_nitrate_time_series(  # noqa: PLR0913; long arguments are fine here
+def plot_wind_velocity_nitrate_time_series(
     wind: xr.Dataset,
     velocity: xr.Dataset,
     inner_nitrate: xr.Dataset,
@@ -441,67 +424,67 @@ for i in tqdm(range(2014, 2025)):
     )
 
 # %%
-midshelf_depth_integrate = midshelf_nitrate.copy()
+midshelf_depth_mean_monthly = (
+    midshelf_nitrate["nitrate"].mean(dim="depth").groupby("time.month").mean(dim="time").to_dataset()
+)
+midshelf_depth_mean_monthly["nitrate_std"] = (
+    midshelf_nitrate["nitrate"].mean(dim="depth").groupby("time.month").std(dim="time")
+)
+midshelf_depth_mean_monthly["nitrate_count"] = (
+    midshelf_nitrate["nitrate"].mean(dim="depth").groupby("time.month").count(dim="time")
+)
+midshelf_depth_mean_monthly["nitrate_ci"] = (
+    midshelf_depth_mean_monthly["nitrate_std"] * distributions.t(10 - 1).isf(0.025) / np.sqrt(10)
+)
+
+inner_depth_mean_monthly = (
+    inner_nitrate["nitrate"].mean(dim="depth").groupby("time.month").mean(dim="time").to_dataset()
+)
+inner_depth_mean_monthly["nitrate_std"] = (
+    inner_nitrate["nitrate"].mean(dim="depth").groupby("time.month").std(dim="time")
+)
+inner_depth_mean_monthly["nitrate_count"] = (
+    inner_nitrate["nitrate"].mean(dim="depth").groupby("time.month").count(dim="time")
+)
+inner_depth_mean_monthly["nitrate_ci"] = (
+    inner_depth_mean_monthly["nitrate_std"] * distributions.t(10 - 1).isf(0.025) / np.sqrt(10)
+)
+
+# %%
 fig, axs = plt.subplots(1, 1, figsize=(5, 4), sharex=True)
+
 axs.plot(
-    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
-    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 80,
+    inner_depth_mean_monthly["month"],
+    inner_depth_mean_monthly["nitrate"],
+    color="#BB5566",
+    label="Inner-shelf",
+)
+
+axs.fill_between(
+    inner_depth_mean_monthly["month"],
+    inner_depth_mean_monthly["nitrate"] - inner_depth_mean_monthly["nitrate_ci"],
+    inner_depth_mean_monthly["nitrate"] + inner_depth_mean_monthly["nitrate_ci"],
+    alpha=0.5,
+    color="#BB5566",
+)
+
+axs.plot(
+    midshelf_depth_mean_monthly["month"],
+    midshelf_depth_mean_monthly["nitrate"],
     color="#004488",
     label="Mid-shelf",
 )
+
 axs.fill_between(
-    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
-    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 80
-    - (
-        midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
-        / np.sqrt(midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time"))
-        * distributions.t(
-            midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1,
-        ).isf(0.025)
-    )
-    / 80,
-    midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 80
-    + (
-        midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
-        / np.sqrt(midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time"))
-        * distributions.t(
-            midshelf_depth_integrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1,
-        ).isf(0.025)
-    )
-    / 80,
+    midshelf_depth_mean_monthly["month"],
+    midshelf_depth_mean_monthly["nitrate"] - midshelf_depth_mean_monthly["nitrate_ci"],
+    midshelf_depth_mean_monthly["nitrate"] + midshelf_depth_mean_monthly["nitrate_ci"],
     alpha=0.5,
     color="#004488",
 )
 
-axs.plot(
-    inner_nitrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
-    inner_nitrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 25,
-    color="#BB5566",
-    ls="--",
-    label="Inner-shelf",
-)
-axs.fill_between(
-    inner_nitrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time").month,
-    inner_nitrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 25
-    - (
-        inner_nitrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
-        / np.sqrt(inner_nitrate["depth_integrated_nitrate"].groupby("time.month").count("time"))
-        * distributions.t(inner_nitrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1).isf(0.025)
-    )
-    / 25,
-    inner_nitrate["depth_integrated_nitrate"].groupby("time.month").mean(dim="time") / 25
-    + (
-        inner_nitrate["depth_integrated_nitrate"].groupby("time.month").std(dim="time")
-        / np.sqrt(inner_nitrate["depth_integrated_nitrate"].groupby("time.month").count("time"))
-        * distributions.t(inner_nitrate["depth_integrated_nitrate"].groupby("time.month").count("time") - 1).isf(0.025)
-    )
-    / 25,
-    alpha=0.5,
-    color="#BB5566",
-)
-
 axs.set_xlim(4, 10)
-axs.set_ylim(0, 25)
+axs.set_ylim(0, 30)
 axs.minorticks_off()
 axs.legend(loc="lower right")
 axs.xaxis.set_major_formatter(lambda x, pos: calendar.month_abbr[int(x)])  # noqa: ARG005; `pos` is necessary but unused
@@ -513,6 +496,3 @@ plt.savefig(
     bbox_inches="tight",
     dpi=600,
 )
-
-# %%
-wind
