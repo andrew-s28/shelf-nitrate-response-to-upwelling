@@ -1,3 +1,4 @@
+exclude: \.(nc|zarr|grib|h5)$
 repos:
 - repo: https://github.com/mwouts/jupytext
   rev: v1.16.7  # CURRENT_TAG/COMMIT_HASH
