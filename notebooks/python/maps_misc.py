@@ -38,48 +38,30 @@ DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 
 OPTAA_PATH = DATA_DIR / "CE01ISSM/ce01issm_optaa_processed.nc"
 FLORT_PATH = DATA_DIR / "CE01ISSM/ce01issm_flort_processed.nc"
 
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_rotated_filtered_streamwise_v4.nc"
-OLD_VEL_PATH = list(
-    Path(DATA_DIR / "NH10_Mooring_Data/").glob("nh10_hourly_data_1997_2021_part*.nc"),
-)
-NEW_VEL_PATH = DATA_DIR / "NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc"
+VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
 
-VELOCITY_VARIABLE = "cs"
+NH10_BOTTLE_SAMPLES_PATH = DATA_DIR / "NHL_Gridded/NH10_bottle_samples.nc"
+NH01_NH03_BOTTLE_SAMPLES_PATH = DATA_DIR / "NHL_Gridded/NH01_NH03_bottle_samples.nc"
+CE01ISSP_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/ea_ship_data/CE01ISSP_bottle_samples.nc"
+CE02SHSP_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/ea_ship_data/CE02SHSP_bottle_samples.nc"
 
 # %%
-MIN_VEL_DEPTH = 10  # meters
-MAX_VEL_DEPTH = 80  # meters
-
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
 velocity = xr.open_dataset(VEL_PATH)
 optaa = xr.open_dataset(OPTAA_PATH)
 flort = xr.open_dataset(FLORT_PATH)
-
-# bit of a lazy way to use the cs_proj variable, since the notebook is set up for cs
-if VELOCITY_VARIABLE == "cs_proj":
-    velocity = velocity.drop_vars("cs").rename({"cs_proj": "cs"})
-
-inner_nitrate = inner_nitrate.resample(time="1D").mean()
-
-# resample midshelf nitrate to fill some of the gaps for composite calclulations
-midshelf_nitrate = midshelf_nitrate.resample(time="1D").mean()
-
-# interpolate velocity depths to match 1 meter bins in midshelf nitrate
-velocity = velocity.interp(depth=midshelf_nitrate.depth)
-velocity = velocity.resample(time="1D").mean()
-velocity = velocity.where((velocity.depth > MIN_VEL_DEPTH) & (velocity.depth < MAX_VEL_DEPTH))
 
 flort = flort.drop_dims("stats")
 optaa_al, flort_al = xr.align(
@@ -94,80 +76,121 @@ nhl_grid = xr.load_dataset(
     "../data/NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
 ).squeeze()
 
-# %%
-chloro_data_resampled = estimated_chloro.resample(time="1D").mean()
+nh10_bottle_samples = xr.open_dataset(NH10_BOTTLE_SAMPLES_PATH).resample(time="1D").mean()
+nh01_nh03_bottle_samples = xr.open_dataset(NH01_NH03_BOTTLE_SAMPLES_PATH).resample(time="1D").mean()
+ce01issp_bottle_samples = xr.open_dataset(CE01ISSP_BOTTLE_SAMPLES_PATH).resample(time="1D").mean()
+ce02shsp_bottle_samples = xr.open_dataset(CE02SHSP_BOTTLE_SAMPLES_PATH).resample(time="1D").mean()
 
 # %%
 fig, ax = plt.subplots(figsize=(10, 4))
 ax = cast(plt.Axes, ax)
 
-wind_data_avail = wind["w8d"].notnull()
-chloro_data_avail = estimated_chloro.notnull()
-vel_data_avail = velocity["cs"].notnull().any(dim="depth")
-inner_nitrate_data_avail = inner_nitrate.nitrate.notnull().any(dim="depth")
-midshelf_nitrate_data_avail = midshelf_nitrate.nitrate.notnull().any(dim="depth")
-nhl_grid_data_avail = nhl_grid["potential_density"].notnull().any("pressure").isel(longitude=0)
+wind_data_avail = wind["coare_y"].notna()
+chloro_data_avail = estimated_chloro.notna()
+vel_data_avail = velocity["u_proj"].notna().any(dim="depth")
+inner_nitrate_data_avail = inner_nitrate.nitrate.notna().any(dim="depth")
+midshelf_nitrate_data_avail = midshelf_nitrate.nitrate.notna().any(dim="depth")
+nhl_grid_data_avail = nhl_grid["potential_density"].notna().any(dim="pressure").isel(longitude=0)
+nh01_nh03_bottle_sample_avail = nh01_nh03_bottle_samples.nitrate.notna()
+nh10_bottle_sample_avail = nh10_bottle_samples.nitrate.notna()
+ce01issp_bottle_sample_avail = ce01issp_bottle_samples.nitrate.notna().any(dim="pressure")
+ce02shsp_bottle_sample_avail = ce02shsp_bottle_samples.nitrate.notna().any(dim="pressure")
 
 ax.fill_between(
     chloro_data_avail.time,
-    chloro_data_avail - 0.5,
-    chloro_data_avail + 0.5,
+    chloro_data_avail - 0.25,
+    chloro_data_avail + 0.25,
     where=chloro_data_avail,
     step="mid",
     color="#4477AA",
 )
 ax.fill_between(
     inner_nitrate_data_avail.time,
-    inner_nitrate_data_avail + 0.5,
-    inner_nitrate_data_avail + 1.5,
+    inner_nitrate_data_avail + 0.75,
+    inner_nitrate_data_avail + 1.25,
     where=inner_nitrate_data_avail,
     step="mid",
     color="#EE6677",
 )
 ax.fill_between(
     midshelf_nitrate_data_avail.time,
-    midshelf_nitrate_data_avail + 1.5,
-    midshelf_nitrate_data_avail + 2.5,
+    midshelf_nitrate_data_avail + 1.75,
+    midshelf_nitrate_data_avail + 2.25,
     where=midshelf_nitrate_data_avail,
     step="mid",
     color="#228833",
 )
 ax.fill_between(
-    nhl_grid_data_avail.time,
-    nhl_grid_data_avail + 2.5,
-    nhl_grid_data_avail + 3.5,
-    where=nhl_grid_data_avail,
-    step="mid",
-    color="#CCBB44",
-)
-ax.fill_between(
     vel_data_avail.time,
-    vel_data_avail + 3.5,
-    vel_data_avail + 4.5,
+    vel_data_avail + 2.75,
+    vel_data_avail + 3.25,
     where=vel_data_avail,
     step="mid",
     color="#66CCEE",
 )
 ax.fill_between(
+    nhl_grid_data_avail.time,
+    nhl_grid_data_avail + 3.75,
+    nhl_grid_data_avail + 4.25,
+    where=nhl_grid_data_avail,
+    step="mid",
+    color="#CCBB44",
+)
+ax.fill_between(
     wind_data_avail.time,
-    wind_data_avail + 4.5,
-    wind_data_avail + 5.5,
+    wind_data_avail + 4.75,
+    wind_data_avail + 5.25,
     where=wind_data_avail,
     step="mid",
     color="#AA3377",
 )
 
+ax.plot(
+    nh10_bottle_sample_avail["time"][nh10_bottle_sample_avail],
+    nh10_bottle_sample_avail[nh10_bottle_sample_avail] + 2.6,
+    marker="o",
+    markersize=5,
+    linestyle="None",
+    color="#228833",
+)
+ax.plot(
+    ce02shsp_bottle_sample_avail["time"][ce02shsp_bottle_sample_avail],
+    ce02shsp_bottle_sample_avail[ce02shsp_bottle_sample_avail] + 2.4,
+    marker="s",
+    markersize=5,
+    linestyle="None",
+    color="#228833",
+)
+
+ax.plot(
+    nh01_nh03_bottle_sample_avail["time"][nh01_nh03_bottle_sample_avail],
+    nh01_nh03_bottle_sample_avail[nh01_nh03_bottle_sample_avail] + 1.6,
+    marker="o",
+    markersize=5,
+    linestyle="None",
+    color="#EE6677",
+)
+ax.plot(
+    ce01issp_bottle_sample_avail["time"][ce01issp_bottle_sample_avail],
+    ce01issp_bottle_sample_avail[ce01issp_bottle_sample_avail] + 1.4,
+    marker="s",
+    markersize=5,
+    linestyle="None",
+    color="#EE6677",
+)
+
 ax.set_yticks([1, 2, 3, 4, 5, 6])
 ax.set_yticklabels(
     [
-        "Chlorophyll\n(CE01ISSM)",
+        "Inner shelf chlorophyll\n(CE01ISSM)",
         "Inner shelf nitrate\n(CE01ISSP)",
-        "Midshelf nitrate\n(CE02SHSP)",
+        "Mid-shelf nitrate\n(CE02SHSP)",
+        "Mid-shelf velocity\n(NH10/CE02)",
         "NHL Surveys",
-        "Midshelf velocity\n(NH10/CE02)",
         "Wind\n(NDBC 46050)",
     ],
 )
+ax.set_xlim(np.float64(9555.10908203125), np.float64(20939.47099609375))
 
 plt.savefig(
     FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/data_availability_summary.{FIG_SAVE_FMT}",

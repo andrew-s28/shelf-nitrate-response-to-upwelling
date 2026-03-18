@@ -46,10 +46,10 @@ NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 
@@ -57,19 +57,36 @@ WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 
+# make sure nan times are removed for bottle sample comparison
+
+inner_nitrate = inner_nitrate.dropna(dim="time", how="all", subset=["nitrate"])
+midshelf_nitrate = midshelf_nitrate.dropna(dim="time", how="all", subset=["nitrate"])
+
 
 # %%
 def get_overlapping_bottles(
     profiler: xr.Dataset,
     ship: xr.Dataset,
 ) -> tuple[xr.Dataset, xr.Dataset]:
+    """Find the profiler data that overlaps with the bottle samples within one day.
+
+    Args:
+        profiler (xr.Dataset): The profiler dataset, containing a "time" coordinate.
+        ship (xr.Dataset): The ship dataset, containing a "time" coordinate and a "nitrate" variable.
+
+    Returns:
+        tuple[xr.Dataset, xr.Dataset]: A tuple containing two datasets:
+            the first is the ship dataset with only the overlapping bottle samples
+            and the second is the profiler dataset with only the overlapping data.
+
+    """
     # find closest profiler data to OOI bottle samples
     profiler = profiler.sel(time=ship.time, method="nearest")
     ship_overlapping_bottles_slices: list[xr.Dataset] = []
     ship_notoverlapping_bottles_slices: list[xr.Dataset] = []
     prof_overlapping_bottles_slices: list[xr.Dataset] = []
     prof_notoverlapping_bottles_slices: list[xr.Dataset] = []
-    for i, (t1, t2) in enumerate(zip(profiler.time.values, ship.time.values, strict=False)):
+    for i, (t1, t2) in enumerate(zip(profiler.time.to_numpy(), ship.time.to_numpy(), strict=False)):
         # only consider profiler data within 1 day of OOI bottle samples
         if np.abs((t1 - t2) / np.timedelta64(1, "D")) < 1:
             ship_overlapping_bottles_slices.append(ship.isel(time=i))
@@ -78,10 +95,14 @@ def get_overlapping_bottles(
             ship_notoverlapping_bottles_slices.append(ship.isel(time=i))
             prof_notoverlapping_bottles_slices.append(profiler.isel(time=i))
     print(
-        f"{len(ship_overlapping_bottles_slices)} out of {len(ship_overlapping_bottles_slices) + len(ship_notoverlapping_bottles_slices)} bottle samples overlap with profiler deployments within one day.",
+        f"{len(ship_overlapping_bottles_slices)} out of "
+        f"{len(ship_overlapping_bottles_slices) + len(ship_notoverlapping_bottles_slices)} "
+        "bottle samples overlap with profiler deployments within one day.",
     )
     print(
-        f"{len(ship_notoverlapping_bottles_slices)} out of {len(ship_overlapping_bottles_slices) + len(ship_notoverlapping_bottles_slices)} bottle samples do not overlap with profiler deployments within one day.",
+        f"{len(ship_notoverlapping_bottles_slices)} out of "
+        f"{len(ship_overlapping_bottles_slices) + len(ship_notoverlapping_bottles_slices)} "
+        "bottle samples do not overlap with profiler deployments within one day.",
     )
 
     # create combined datasets for overlapping and non-overlapping samples
@@ -95,7 +116,7 @@ def get_overlapping_bottles(
 
 # %%
 # Load the OOI Endurance Array ship data
-fileList = Path(DATA_DIR / "ship/ea_ship_data/").glob("*.csv")
+file_list = Path(DATA_DIR / "ship/ea_ship_data/").glob("*.csv")
 df_list = []
 col_names = [
     "Station",
@@ -109,7 +130,7 @@ col_names = [
     "CTD Temperature 2 [deg C]",
     "Discrete Nitrate [uM]",
 ]
-for f in fileList:
+for f in file_list:
     df_temp = pd.read_csv(DATA_DIR / "ship/ea_ship_data/" / f, usecols=col_names)
     rows = df_temp.loc[df_temp["Station"] == "CE01"]
     df_list.append(rows)
@@ -151,6 +172,11 @@ inner_ooi_crse["pot_density_anom"] = gsw.density.sigma0(
     ),
 )
 
+# save bottle samples data
+inner_ooi_crse.to_netcdf(
+    DATA_DIR / "ship/ea_ship_data/CE01ISSP_bottle_samples.nc",
+)
+
 # %%
 ooi_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
     profiler=inner_nitrate,
@@ -189,21 +215,21 @@ inner_nhl_crse_nit = pd.read_csv(DATA_DIR / "ship/Nutrients_4_Andrew_all_NCC.csv
 nh_pressure_grid = inner_nhl_crse_ctd["pressure"]
 nh_time_grid = inner_nhl_crse_ctd["date"]
 inner_nhl_crse_nit["Sample Date"] = pd.to_datetime(
-    inner_nhl_crse_nit["Sample Date"].values,
+    inner_nhl_crse_nit["Sample Date"].to_numpy(),
     unit="ns",
 )
 
 nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = [], [], [], [], []
-for i, t in enumerate(inner_nhl_crse_ctd["date"].values):
+for _i, t in enumerate(inner_nhl_crse_ctd["date"].to_numpy()):
     # find places where nitrate data lines up with ctd data
     # need exact date matches - don't want nearest neighbor for this step
     time_mask = np.where(inner_nhl_crse_nit["Sample Date"] == t)
     for n, d, s, p, lon in zip(
-        inner_nhl_crse_nit["no3"].values[time_mask],
-        inner_nhl_crse_nit["Sample Date"].values[time_mask],
-        inner_nhl_crse_nit["Station"].values[time_mask],
-        inner_nhl_crse_nit["pressure"].values[time_mask],
-        inner_nhl_crse_nit["Longitude"].values[time_mask],
+        inner_nhl_crse_nit["no3"].to_numpy()[time_mask],
+        inner_nhl_crse_nit["Sample Date"].to_numpy()[time_mask],
+        inner_nhl_crse_nit["Station"].to_numpy()[time_mask],
+        inner_nhl_crse_nit["pressure"].to_numpy()[time_mask],
+        inner_nhl_crse_nit["Longitude"].to_numpy()[time_mask],
         strict=False,
     ):
         nitr_tbin.append(n)
@@ -226,7 +252,8 @@ pres_targ = xr.DataArray(pres_tbin, dims="date")
 time_targ = xr.DataArray(time_tbin, dims="date")
 long_targ = xr.DataArray(long_tbin, dims="date")
 
-# bin the ctd data using the arrays from the bottle sample binning, using nearest binning method, e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
+# bin the ctd data using the arrays from the bottle sample binning, using nearest binning method
+# e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
 inner_nhl_crse = inner_nhl_crse_ctd.sel(
     date=time_targ,
     pressure=pres_targ,
@@ -244,6 +271,12 @@ inner_nhl_crse = inner_nhl_crse.where(
     drop=True,
 )
 inner_nhl_crse = inner_nhl_crse.swap_dims({"date": "time"})
+
+
+# save bottle samples data
+inner_nhl_crse.to_netcdf(
+    DATA_DIR / "NHL_Gridded/NH01_NH03_bottle_samples.nc",
+)
 
 # %%
 nhl_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
@@ -267,7 +300,7 @@ for i in range(len(nhl_overlapping_bottles.time)):
         "X",
     )
     plt.annotate(
-        f"{nhl_overlapping_bottles.isel(time=i).date.values}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.values)}",
+        f"{nhl_overlapping_bottles.isel(time=i).date.to_numpy()}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.to_numpy())}",
         (0.9, 0.9),
         xycoords="axes fraction",
     )
@@ -278,7 +311,7 @@ for i in range(len(nhl_overlapping_bottles.time)):
 
 # %%
 # loading ooi cruise data df = ooi cruise data
-fileList = Path(DATA_DIR / "ship/ea_ship_data/").glob("*.csv")
+file_list = Path(DATA_DIR / "ship/ea_ship_data/").glob("*.csv")
 df_list = []
 col_names = [
     "Station",
@@ -292,7 +325,7 @@ col_names = [
     "CTD Temperature 2 [deg C]",
     "Discrete Nitrate [uM]",
 ]
-for f in fileList:
+for f in file_list:
     df_temp = pd.read_csv(DATA_DIR / "ship/ea_ship_data/" / f, usecols=col_names)
     rows = df_temp.loc[df_temp["Station"] == "CE02"]
     df_list.append(rows)
@@ -335,6 +368,11 @@ mid_shelf_ooi_crse["pot_density_anom"] = gsw.density.sigma0(
     ),
 )
 
+# save bottle samples data
+mid_shelf_ooi_crse.to_netcdf(
+    DATA_DIR / "ship/ea_ship_data/CE02SHSP_bottle_samples.nc",
+)
+
 # %%
 ooi_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
     profiler=midshelf_nitrate,
@@ -368,7 +406,7 @@ for i in range(len(ooi_overlapping_bottles.time)):
         "X",
     )
     plt.annotate(
-        f"{ooi_overlapping_bottles.isel(time=i).time.values}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.values)}",
+        f"{ooi_overlapping_bottles.isel(time=i).time.to_numpy()}\n{np.unique(prof_overlapping_bottles.isel(time=i).deployment.to_numpy())}",
         (0.9, 0.9),
         xycoords="axes fraction",
     )
@@ -394,21 +432,21 @@ mid_nhl_crse_nit = pd.read_csv(DATA_DIR / "ship/Nutrients_4_Andrew_all_NCC.csv")
 nh_pressure_grid = mid_nhl_crse_ctd["pressure"]
 nh_time_grid = mid_nhl_crse_ctd["date"]
 mid_nhl_crse_nit["Sample Date"] = pd.to_datetime(
-    mid_nhl_crse_nit["Sample Date"].values,
+    mid_nhl_crse_nit["Sample Date"].to_numpy(),
     unit="ns",
 )
 
 nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = [], [], [], [], []
-for i, t in enumerate(mid_nhl_crse_ctd["date"].values):
+for _i, t in enumerate(mid_nhl_crse_ctd["date"].to_numpy()):
     # find places where nitrate data lines up with ctd data
     # need exact date matches - don't want nearest neighbor for this step
     time_mask = np.where(mid_nhl_crse_nit["Sample Date"] == t)
     for n, d, s, p, lon in zip(
-        mid_nhl_crse_nit["no3"].values[time_mask],
-        mid_nhl_crse_nit["Sample Date"].values[time_mask],
-        mid_nhl_crse_nit["Station"].values[time_mask],
-        mid_nhl_crse_nit["pressure"].values[time_mask],
-        mid_nhl_crse_nit["Longitude"].values[time_mask],
+        mid_nhl_crse_nit["no3"].to_numpy()[time_mask],
+        mid_nhl_crse_nit["Sample Date"].to_numpy()[time_mask],
+        mid_nhl_crse_nit["Station"].to_numpy()[time_mask],
+        mid_nhl_crse_nit["pressure"].to_numpy()[time_mask],
+        mid_nhl_crse_nit["Longitude"].to_numpy()[time_mask],
         strict=False,
     ):
         nitr_tbin.append(n)
@@ -431,7 +469,8 @@ pres_targ = xr.DataArray(pres_tbin, dims="date")
 time_targ = xr.DataArray(time_tbin, dims="date")
 long_targ = xr.DataArray(long_tbin, dims="date")
 
-# bin the ctd data using the arrays from the bottle sample binning, using nearest binning method, e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
+# bin the ctd data using the arrays from the bottle sample binning, using nearest binning method
+# e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
 mid_nhl_crse = mid_nhl_crse_ctd.sel(
     date=time_targ,
     pressure=pres_targ,
@@ -446,6 +485,11 @@ mid_nhl_crse["station"] = (("date"), stat_tbin)
 # view created xarray
 mid_nhl_crse = mid_nhl_crse.where(mid_nhl_crse.station == "NH10", drop=True)
 mid_nhl_crse = mid_nhl_crse.swap_dims({"date": "time"})
+
+# save bottle sample data
+mid_nhl_crse.to_netcdf(
+    DATA_DIR / "NHL_Gridded/NH10_bottle_samples.nc",
+)
 
 # %%
 nhl_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
@@ -604,7 +648,14 @@ plt.ylabel("Potential Density Anomaly ($\\mathsf{kg \\; m^{-3}}$)")
 
 
 # %%
-def compare_nhl_densities(ds1: xr.Dataset, ds2: xr.Dataset):
+def compare_nhl_densities(ds1: xr.Dataset, ds2: xr.Dataset) -> None:
+    """Compare the potential density distributions of two datasets using a t-test.
+
+    Args:
+        ds1 (xr.Dataset): The first dataset, containing a "potential_density" variable and a "pressure" coordinate.
+        ds2 (xr.Dataset): The second dataset, containing a "potential_density" variable and a "pressure" coordinate.
+
+    """
     pressure = np.intersect1d(ds1["pressure"], ds2["pressure"])
     for p in pressure:
         ds1_p = ds1.sel(pressure=p, method="nearest").dropna("time")
@@ -635,10 +686,18 @@ compare_nhl_densities(nhl_ctd_nanoos, nhl_ctd_ooi)
 
 
 # %%
+def generate_harmonics(t: np.ndarray, harmonics: int, f: float = 1 / 365.2422) -> np.ndarray:
+    """Generate a matrix of sine and cosine harmonics for regression.
 
+    Args:
+        t (np.ndarray): 1D array of time values (e.g., day of year).
+        harmonics (int): Number of harmonics to generate (e.g., 3 for annual, semiannual, and triannual).
+        f (float): base frequency (default is 1 cycle per year).
 
-# %%
-def generate_harmonics(t, harmonics: int, f: float = 1 / 365.2422):
+    Returns:
+        (xr.Dataset) A 2D array for input to sm.OLS
+
+    """
     exog = np.full((harmonics * 2, len(t)), np.nan)
     for i in range(harmonics * 2):
         if i % 2 == 0:
@@ -650,7 +709,24 @@ def generate_harmonics(t, harmonics: int, f: float = 1 / 365.2422):
     return exog
 
 
-def calc_climatology(t, y, harmonics: int, f: float = 1 / 365.2422):
+def calc_climatology(
+    t: np.ndarray,
+    y: np.ndarray,
+    harmonics: int,
+    f: float = 1 / 365.2422,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calculate the climatology of a time series using OLS regression with harmonic terms.
+
+    Args:
+        t (np.ndarray): 1D array of time values (e.g., day of year).
+        y (np.ndarray): 1D array of the variable to fit (e.g., nitrate concentration).
+        harmonics (np.ndarray): Number of harmonics to include in the regression.
+        f (np.ndarray): base frequency for the harmonics (default is 1 cycle per year).
+
+    Returns:
+        (tuple[np.ndarray, np.ndarray]) containing the fitted climatology values and the regression results object.
+
+    """
     exog = generate_harmonics(t, harmonics=harmonics, f=f)
     endog = y
     mod = sm.OLS(endog, exog)
@@ -658,7 +734,18 @@ def calc_climatology(t, y, harmonics: int, f: float = 1 / 365.2422):
     return res.params @ exog.T, res
 
 
-def calc_climatology_by_depth(da: xr.DataArray, harmonics: int):
+def calc_climatology_by_depth(da: xr.DataArray, harmonics: int) -> xr.Dataset:
+    """Calculate the climatology of a 2-D DataArray with `time` and `depth` dimensions.
+
+    Args:
+        da (xr.DataArray): DataArray with 2-D data with `time` and `depth` dimensions.
+        harmonics (np.ndarray): Number of harmonics to include in the regression.
+
+    Returns:
+        (xr.Dataset) containing the fitted climatology values, standard deviation of the fit,
+            and confidence interval of the fit for each depth level.
+
+    """
     pressure = da["pressure"]
     fit_list = []
     for p in pressure:
@@ -724,7 +811,7 @@ def calc_climatology_by_depth(da: xr.DataArray, harmonics: int):
 
 
 # %%
-def add_colorbar(ax, mappable, label: str):
+def add_colorbar(ax, mappable, label: str):  # noqa: ANN001, D103, ANN201
     divider = make_axes_locatable(ax)
     ax_cb = divider.new_horizontal(size="5%", pad=0.1, axes_class=plt.Axes)
     fig.add_axes(ax_cb)
@@ -827,9 +914,6 @@ ax2.xaxis.set_major_formatter(month_fmt)
 # Discussion on the overlapping of two confidence intervals with approximately equal variance and size: https://stats.stackexchange.com/questions/18215/relation-between-confidence-interval-and-testing-statistical-hypothesis-for-t-te/18259#18259
 
 # %% [markdown]
-#
-
-# %% [markdown]
 # ## Comparing bottle samples with monthly median nitrate profiles
 
 # %%
@@ -860,7 +944,7 @@ inner_nitrate_monthly = inner_nitrate_monthly.where(
 
 # %%
 mid_shelf_ooi_crse_stacked = (
-    mid_shelf_ooi_crse["nitrate"].sel(time=mid_shelf_ooi_crse["time.month"] == 7).stack(z=[...])
+    mid_shelf_ooi_crse["nitrate"].sel(time=mid_shelf_ooi_crse["time.month"] == 7).stack(z=[...])  # noqa: PD013
 )
 
 
@@ -879,18 +963,22 @@ for i, m in enumerate(range(4, 10)):
     ax.scatter(
         mid_nhl_crse.sel(time=mid_nhl_crse["time.month"] == m)["nitrate"],
         -mid_nhl_crse.sel(time=mid_nhl_crse["time.month"] == m)["pressure"],
-        color=colors[i],
+        edgecolors=colors[i],
+        facecolors="white",
+        linewidths=3,
     )
     ax.scatter(
         monthly_ooi_crse_data,
         -monthly_ooi_crse_data["pressure"],
-        color=colors[i],
-        marker="X",  # pyright: ignore[reportArgumentType]
+        marker="X",
+        edgecolors=colors[i],
+        facecolors="white",
+        linewidths=3,
     )
     ax.fill_betweenx(
         -monthly_data["depth"],
-        monthly_data["mean"] - monthly_data["ci"],  # pyright: ignore[reportArgumentType]
-        monthly_data["mean"] + monthly_data["ci"],  # pyright: ignore[reportArgumentType]
+        monthly_data["mean"] - monthly_data["ci"],
+        monthly_data["mean"] + monthly_data["ci"],
         ls="None",
         edgecolor="None",
         facecolor=colors[i],
