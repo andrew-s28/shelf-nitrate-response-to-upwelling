@@ -39,10 +39,10 @@ NOTEBOOK_DIR = Path().cwd().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
@@ -332,9 +332,9 @@ composite_vel_monthly_cs_slice = composite_vel_monthly_cs.sel(
 )
 
 
-for i, v in enumerate(composite_vel_monthly_cs_slice["time"]):
-    for j, m in enumerate(composite_vel_monthly_cs_slice.sel(time=v)["month"]):
-        data = composite_vel_monthly_cs_slice.sel(time=v, month=m)
+for i, t in enumerate(composite_vel_monthly_cs_slice["time"]):
+    for j, m in enumerate(composite_vel_monthly_cs_slice.sel(time=t)["month"]):
+        data = composite_vel_monthly_cs_slice.sel(time=t, month=m)
         axs[i].axvline(0, color="gray", lw=1.5)
         axs[i].plot(
             data["mean"] * 100,  # convert to cm/s
@@ -348,21 +348,23 @@ for i, v in enumerate(composite_vel_monthly_cs_slice["time"]):
         axs[i].set_xlim([-5, 5])
         axs[i].text(
             0.02,
-            0.99,
-            "Offshore\n$\\leftarrow$",
+            -0.1,
+            "$\\leftarrow$Offshore",
             bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
             transform=axs[i].transAxes,
             va="top",
             ha="left",
+            fontsize=8,
         )
         axs[i].text(
             0.98,
-            0.99,
-            "Onshore\n$\\rightarrow$",
+            -0.1,
+            "Onshore$\\rightarrow$",
             bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
             transform=axs[i].transAxes,
             va="top",
             ha="right",
+            fontsize=8,
         )
         if i == 0:
             print(
@@ -376,7 +378,7 @@ axs[2].annotate("+2 days\n(c)", xy=(0.05, 0.05), xycoords="axes fraction", fonts
 handles, labels = axs[0].get_legend_handles_labels()
 fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.9, 0.5))
 
-fig.supxlabel("Cross-shelf velocity [$\\mathsf{cm \\; s^{-1}}$]", y=-0.07)
+fig.supxlabel("Cross-shelf velocity [$\\mathsf{cm \\; s^{-1}}$]", y=-0.1)
 fig.supylabel("z [$\\mathsf{{m}}$]", x=0.02)
 plt.savefig(
     FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_cs_velocity.{FIG_SAVE_FMT}",
@@ -624,21 +626,23 @@ for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
         axs[i].set_xlim([-1.5, 1.5])
         axs[i].text(
             0.02,
-            0.99,
-            "Offshore\n$\\leftarrow$",
+            -0.1,
+            "$\\leftarrow$Offshore",
             bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
             transform=axs[i].transAxes,
             va="top",
             ha="left",
+            fontsize=8,
         )
         axs[i].text(
             0.98,
-            0.99,
-            "Onshore\n$\\rightarrow$",
+            -0.1,
+            "Onshore$\\rightarrow$",
             bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
             transform=axs[i].transAxes,
             va="top",
             ha="right",
+            fontsize=8,
         )
 
 bbox_props = {"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."}
@@ -675,7 +679,7 @@ fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.9, 0.5))
 
 fig.supxlabel(
     "Cross-shelf nitrate flux [$\\mathsf{mmol \\; m^{-2} \\; s^{-1}}$]",
-    y=-0.01,
+    y=-0.08,
 )
 fig.supylabel("z [$\\mathsf{{m}}$]", x=0.02)
 plt.savefig(

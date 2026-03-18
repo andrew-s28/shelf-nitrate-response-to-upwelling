@@ -32,10 +32,10 @@ NOTEBOOK_DIR = Path().cwd().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled_v2.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled_v2.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
@@ -140,6 +140,9 @@ midshelf_nitrate_monthly = xr.Dataset(
     },
 )
 midshelf_nitrate_monthly["ci"] = midshelf_nitrate_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
+
+# %%
+midshelf_nitrate
 
 # %% [markdown]
 # ## "Normal" Cross-shelf Advective Flux Divergence Calculation

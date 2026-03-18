@@ -39,10 +39,10 @@ NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled_v2.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled_v2.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
@@ -353,9 +353,6 @@ def plot_wind_velocity_nitrate_time_series(
     year: int,
     *,  # make save a keyword-only argument
     save: bool = False,
-    max_nitrate_conc: float = np.inf,
-    max_inner_shelf_depth: float = np.inf,
-    max_midshelf_depth: float = np.inf,
 ) -> None:
     """Plot wind, velocity, and nitrate time series for a given year.
 
@@ -382,8 +379,8 @@ def plot_wind_velocity_nitrate_time_series(
     # Plot each time series
     _plot_wind_time_series(axs[0], wind, year)
     _plot_velocity_time_series(axs[1], velocity, year)
-    _plot_nitrate_time_series(fig, axs[2], inner_nitrate, year, "inner", max_nitrate_conc, max_inner_shelf_depth)
-    _plot_nitrate_time_series(fig, axs[3], midshelf_nitrate, year, "midshelf", max_nitrate_conc, max_midshelf_depth)
+    _plot_nitrate_time_series(fig, axs[2], inner_nitrate, year, "inner")
+    _plot_nitrate_time_series(fig, axs[3], midshelf_nitrate, year, "midshelf")
     _plot_chlorophyll_time_series(axs[4], inner_shelf_chlorophyll, year)
 
     # Add panel labels and turn off minor ticks

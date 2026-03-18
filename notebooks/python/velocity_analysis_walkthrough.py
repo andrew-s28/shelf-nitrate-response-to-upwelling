@@ -90,8 +90,8 @@ def plot_velocity(
     )
     plt.colorbar(pcm, ax=ax, label="Eastward Velocity (m/s)", extend="both")
 
-    ax.axhline(-15, color="k", linestyle="--")
-    ax.axhline(-65, color="k", linestyle="--")
+    ax.axhline(-10, color="k", linestyle="--")
+    ax.axhline(-70, color="k", linestyle="--")
 
 
 # %%
@@ -364,11 +364,11 @@ fig.legend(
 
 # add some reference lines for the surface and bottom contamination
 for ax in axs:
-    ax.axhline(-15, color="k", linestyle="--")
-    ax.axhline(-65, color="k", linestyle="--")
+    ax.axhline(-10, color="k", linestyle="--")
+    ax.axhline(-70, color="k", linestyle="--")
 
 # %% [markdown]
-# The "kinks" in the tidal constituents above 15 m depth and below 65 m depth indicate that these depths are in some way contaminated. This is the motivation for applying a surface and bottom extrapolation to the velocity dataset.
+# The "kinks" in the tidal constituents above ~10 m depth indicate that these depths are in some way contaminated. This is the motivation for applying a surface and bottom extrapolation to the velocity dataset.
 
 # %% [markdown]
 # ## Extrapolating surface and bottom velocity
@@ -377,8 +377,8 @@ for ax in axs:
 # The next step is to actually do the extrapolation. At the surface, we will take a constant extrapolation, using the shallowest non-null value and propagating this up to the surface.
 
 # %%
-MIN_DEPTH = 15
-MAX_DEPTH = 65
+MIN_DEPTH = 10
+MAX_DEPTH = 70
 
 # make a copy so we don't modify the original dataset
 velocity_extrap = velocity.copy()
@@ -402,11 +402,11 @@ plot_velocity(velocity_extrap["u"])
 # Great! Looks like that's working well. Now on to the trickier part, extrapolating the bottom to zero.
 
 # %%
-velocity_extrap = velocity_extrap.where(velocity_extrap["depth"] <= MAX_DEPTH)
+# velocity_extrap = velocity_extrap.where(velocity_extrap["depth"] <= MAX_DEPTH)
 
 # we only want to set zeroes where there is data in the original
 # i.e., selecting for times when there is at least one valid velocity measurement in the original profile
-zeroes = xr.full_like(velocity_extrap.isel(depth=0), 0)
+zeroes = xr.full_like(velocity_extrap.isel(depth=-1), 0)
 zeroes = zeroes.where(~velocity.isnull().all(dim="depth"))
 # we also don't want to extrapolate if there isn't any valid data near the MAX_DEPTH we set earlier
 zeroes = zeroes.where(~velocity.isnull().sel(depth=MAX_DEPTH, method="nearest"))
@@ -435,6 +435,7 @@ plot_velocity(velocity_extrap["u"])
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered")
     warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered")
+
     # select velocity data for deployment periods
     velocity_extrap_nanoos = velocity_extrap.sel(time=NANOOS_TIME)
     velocity_extrap_ooi = velocity_extrap.sel(time=OOI_TIME)
