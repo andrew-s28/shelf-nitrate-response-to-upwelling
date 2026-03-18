@@ -52,17 +52,15 @@ def extrapolate_bottom_velocity(
         xr.Dataset: dataset with bottom velocity linearly extrapolated to zero
 
     """
-    velocity = velocity.where(velocity["depth"] <= max_depth)
-
-    # we only want to set zeroes where there is data in the original
+    # we need to set the deepest value to zero and then interpolate nans
+    # but we only want to set zeroes where there is data in the original
     # i.e., selecting for times when there is at least one valid velocity measurement in the original profile
     zeroes = xr.full_like(velocity.isel(depth=0), 0)
     zeroes = zeroes.where(~velocity.isnull().all(dim="depth"))
-
     # we also don't want to extrapolate if there isn't any valid data near the MAX_DEPTH we set earlier
     zeroes = zeroes.where(~velocity.isnull().sel(depth=max_depth, method="nearest"))
 
-    # set the deepest value to zero
+    # now set the deepest value to the masked zero array
     velocity[{"depth": -1}] = zeroes
 
     # now use linear interpolation over a max gap of 20 m (2 m depth bins) to fill any remaining NaNs
@@ -74,13 +72,13 @@ def extrapolate_bottom_velocity(
 
 def extrapolate_top_velocity(
     velocity: xr.Dataset,
-    min_depth: int = 15,
+    min_depth: int = 10,
 ) -> xr.Dataset:
     """Extrapolate top velocity using constant velocity extrapolation from the top-most depth.
 
     Args:
         velocity (xr.Dataset): dataset containing east and north velocities
-        min_depth (int): minimum depth for original data, default is 15 m
+        min_depth (int): minimum depth for original data, default is 10 m
 
     Returns:
         xr.Dataset (velocity) - dataset with top velocity extrapolated to constant value from the top-most depth
