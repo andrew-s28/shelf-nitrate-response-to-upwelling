@@ -467,41 +467,6 @@ plt.savefig(
 )
 
 # %%
-midshelf_nitrate_med = midshelf_nitrate.median(dim="time")
-midshelf_nitrate_std = midshelf_nitrate.std(dim="time")
-plt.plot(
-    midshelf_nitrate_med.nitrate,
-    -midshelf_nitrate_med.depth,
-    color="black",
-    label="Median",
-)
-plt.fill_betweenx(
-    -midshelf_nitrate_med.depth,
-    midshelf_nitrate_med.nitrate - midshelf_nitrate_std.nitrate,
-    midshelf_nitrate_med.nitrate + midshelf_nitrate_std.nitrate,
-    ls="None",
-    edgecolor="None",
-    facecolor="black",
-    alpha=0.5,
-)
-plt.plot(
-    midshelf_nitrate_med.nitrate - midshelf_nitrate_std.nitrate,
-    -midshelf_nitrate_med.depth,
-    "--",
-    color="black",
-    label=r"Median $\pm$ 1$\sigma$",
-)
-plt.plot(
-    midshelf_nitrate_med.nitrate + midshelf_nitrate_std.nitrate,
-    -midshelf_nitrate_med.depth,
-    "--",
-    color="black",
-)
-plt.xlabel("Nitrate concentration [$\\mu \\mathsf{{M}}$]")
-plt.ylabel("z [$\\mathsf{{m}}$]")
-plt.legend()
-
-# %%
 MINIMUM_N_STAR = 5
 midshelf_nitrate_monthly = xr.Dataset(
     {
@@ -513,39 +478,6 @@ midshelf_nitrate_monthly = xr.Dataset(
 midshelf_nitrate_monthly["ci"] = midshelf_nitrate_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
 midshelf_nitrate_monthly = midshelf_nitrate_monthly.where(
     midshelf_nitrate_monthly["count"] / 7 >= MINIMUM_N_STAR,  # N* at least ~5
-)
-
-# %%
-fig, ax = plt.subplots(sharex=True, sharey=True, figsize=(4, 6))
-for i, m in enumerate(range(4, 10)):
-    monthly_data = midshelf_nitrate_monthly.isel(month=m)
-    ax.plot(
-        monthly_data["mean"],
-        -monthly_data["depth"],
-        color=colors[i],
-        label=f"{calendar.month_abbr[m]}\nN*$\\approx${np.ceil(monthly_data['count'].mean().values / 7):.0f}",
-    )
-    ax.fill_betweenx(
-        -monthly_data["depth"],
-        monthly_data["mean"] - monthly_data["ci"],  # pyright: ignore[reportArgumentType]
-        monthly_data["mean"] + monthly_data["ci"],  # pyright: ignore[reportArgumentType]
-        ls="None",
-        edgecolor="None",
-        facecolor=colors[i],
-        alpha=0.5,
-    )
-
-    ax.set_xlim(0, 40)
-    ax.set_ylim(-80, 0)
-    ax.minorticks_off()
-
-ax.legend()
-fig.supxlabel("Nitrate Concentration [$\\mathsf{m mol \\; m^{-3}}$]", y=0.03)
-fig.supylabel("z [$\\mathsf{{m}}$]", x=-0.03)
-plt.savefig(
-    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/monthly_midshelf_nitrate.{FIG_SAVE_FMT}",
-    format=FIG_SAVE_FMT,
-    bbox_inches="tight",
 )
 
 # %%

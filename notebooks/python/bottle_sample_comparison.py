@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import xarray as xr
-from matplotlib import colormaps as cmaps  # pyright: ignore[reportAttributeAccessIssue]
+from matplotlib import colormaps as cmaps
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.stats import distributions
 
@@ -52,13 +52,14 @@ MIDSHELF_NITRATE_PATH = (
     DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
+VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
+velocity = xr.open_dataset(VEL_PATH)
 
 # make sure nan times are removed for bottle sample comparison
-
 inner_nitrate = inner_nitrate.dropna(dim="time", how="all", subset=["nitrate"])
 midshelf_nitrate = midshelf_nitrate.dropna(dim="time", how="all", subset=["nitrate"])
 
@@ -954,7 +955,7 @@ fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(8, 6))
 for i, m in enumerate(range(4, 10)):
     monthly_data = midshelf_nitrate_monthly.sel(month=m)
     monthly_ooi_crse_data = mid_shelf_ooi_crse["nitrate"].sel(time=mid_shelf_ooi_crse["time.month"] == m).stack(z=[...])  # noqa: PD013
-    ax = cast(plt.Axes, axs.flatten()[i])
+    ax = cast("plt.Axes", axs.flatten()[i])
     ax.plot(
         monthly_data["mean"],
         -monthly_data["depth"],
@@ -1011,4 +1012,52 @@ plt.savefig(
     format=FIG_SAVE_FMT,
     bbox_inches="tight",
     dpi=1200,
+)
+
+# %%
+MINIMUM_N_STAR = 5
+velocity_monthly = xr.Dataset(
+    {
+        "mean": velocity.groupby("time.month").mean(dim="time", skipna=True)["u_proj"],
+        "std": velocity.groupby("time.month").std(dim="time", skipna=True)["u_proj"],
+        "count": velocity.groupby("time.month").count(dim="time")["u_proj"],
+    },
+)
+velocity_monthly["ci"] = velocity_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
+velocity_monthly = velocity_monthly.where(
+    velocity_monthly["count"] / 7 >= MINIMUM_N_STAR,  # N* at least ~5
+)
+
+fig, ax = plt.subplots(sharex=True, sharey=True, figsize=(4, 6))
+
+for i, m in enumerate(range(4, 10)):
+    monthly_data = velocity_monthly.isel(month=m)
+    # print(monthly_data)
+    ax.plot(
+        monthly_data["mean"],
+        -monthly_data["depth"].astype(float),
+        color=colors[i],
+        label=f"{calendar.month_abbr[m]}\nN*$\\approx${np.ceil(monthly_data['count'].mean().item() / 7):.0f}",
+    )
+    # ax.fill_betweenx(
+    #     -monthly_data["depth"].astype(float),
+    #     monthly_data["mean"] - monthly_data["ci"],
+    #     monthly_data["mean"] + monthly_data["ci"],
+    #     ls="None",
+    #     edgecolor="None",
+    #     facecolor=colors[i],
+    #     alpha=0.5,
+    # )
+
+    # ax.set_xlim(0, 40)
+    ax.set_ylim(-80, 0)
+    ax.minorticks_off()
+ax.axvline(0, color="k", ls="--")
+ax.legend()
+fig.supxlabel("Velocity [$\\mathsf{m \\; s^{-1}}$]", y=0.03)
+fig.supylabel("z [$\\mathsf{{m}}$]", x=-0.03)
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/monthly_velocity.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
 )
