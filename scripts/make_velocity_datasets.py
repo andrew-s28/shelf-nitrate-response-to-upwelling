@@ -179,6 +179,9 @@ def rot(
 
 velocity = xr.open_mfdataset(VELOCITY_FILE)
 velocity = velocity.squeeze()
+# convert depth to float to avoid uint issues
+velocity["depth"] = velocity["depth"].astype(float)
+
 # rename for convienience, unless already renamed
 with suppress(ValueError):
     velocity = velocity.rename(
