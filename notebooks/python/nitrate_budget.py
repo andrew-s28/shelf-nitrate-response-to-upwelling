@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: nitrate-upwelling
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -232,6 +232,7 @@ def plot_correlations(
             distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
         ),
     )
+    print(f"Critical correlation coefficient for n_eff={n_eff:.1f} at alpha={alpha}: {rho_crit:.2f}")
 
     _fig, ax = plt.subplots()
     ax.plot(lags, corr, color="k", lw=2)
@@ -285,6 +286,25 @@ plot_correlations(
     n,
     xlabel="Lag [days]",
     ylabel="Wind & Depth Mean Inner Shelf Nitrate Conc.",
+)
+
+correlation.min()
+
+# %%
+tdelay = np.arange(-50, 50)
+correlation, confint, n = lagged_correlation(
+    midshelf_nitrate.mean(dim="depth")["nitrate"],
+    wind["coare_y"],
+    tdelay,
+)
+
+plot_correlations(
+    tdelay,
+    correlation,
+    confint,
+    n,
+    xlabel="Lag [days]",
+    ylabel="Wind & Depth Mean Mid Shelf Nitrate Conc.",
 )
 
 correlation.min()
@@ -411,7 +431,17 @@ flux_al_monthly_flux, monthly_flux_al_flux = xr.align(
     midshelf_nitrate_monthly_flux,
 )
 mask = ~np.isnan(flux_al_monthly_flux) & ~np.isnan(monthly_flux_al_flux)
-np.corrcoef(flux_al_monthly_flux[mask], monthly_flux_al_flux[mask])
+print(
+    f"Correlation coefficient between nitrate fluxes: {xr.corr(flux_al_monthly_flux[mask], monthly_flux_al_flux[mask]).values:.2f}",
+)
+n_eff = len(flux_al_monthly_flux[mask]) / 11
+alpha = 0.05
+rho_crit = float(
+    np.sqrt(
+        distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
+    ),
+)
+print(f"Critical correlation coefficient for n_eff={n_eff:.1f} at alpha={alpha}: {rho_crit:.2f}")
 
 # %%
 fig, axs = plt.subplots(4, 1, sharex=True, figsize=(6, 8))
@@ -510,3 +540,16 @@ plt.savefig(
     bbox_inches="tight",
     dpi=600,
 )
+
+# %%
+midshelf_nitrate["dndt_volume_integrated"].mean(dim="time")
+
+
+# %%
+inner_nitrate["dndt_volume_integrated"].mean(dim="time")
+
+# %%
+midshelf_nitrate_monthly_flux.mean(dim="time")
+
+# %%
+(monthly_flux_al_nitr - inner_al_monthly_flux - mid_al_monthly_flux).mean()

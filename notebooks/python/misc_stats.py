@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: nitrate-upwelling
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -143,6 +143,19 @@ def plot_correlations(
     ax.legend()
     plt.show()
 
+
+# %%
+n = len(velocity["u_proj"].resample(time="1D").mean().dropna("time"))
+n_eff = float(np.nanmean(n)) / 11
+alpha = 0.05
+rho_crit = float(
+    np.sqrt(
+        distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
+    ),
+)
+
+# %%
+rho_crit
 
 # %%
 # determine correlation between wind and velocity at each depth

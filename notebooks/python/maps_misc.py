@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: nitrate-upwelling
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -69,7 +69,7 @@ optaa_al, flort_al = xr.align(
     flort.drop_duplicates("time"),
 )
 
-estimated_chloro = (optaa_al.estimated_chlorophyll + flort_al.estimated_chlorophyll) / 2
+estimated_chloro = (optaa_al["estimated_chlorophyll"] + flort_al["estimated_chlorophyll"]) / 2
 estimated_chloro = estimated_chloro.resample(time="1D").mean()
 
 nhl_grid = xr.load_dataset(
@@ -83,18 +83,17 @@ ce02shsp_bottle_samples = xr.open_dataset(CE02SHSP_BOTTLE_SAMPLES_PATH).resample
 
 # %%
 fig, ax = plt.subplots(figsize=(10, 4))
-ax = cast(plt.Axes, ax)
 
-wind_data_avail = wind["coare_y"].notna()
-chloro_data_avail = estimated_chloro.notna()
-vel_data_avail = velocity["u_proj"].notna().any(dim="depth")
-inner_nitrate_data_avail = inner_nitrate.nitrate.notna().any(dim="depth")
-midshelf_nitrate_data_avail = midshelf_nitrate.nitrate.notna().any(dim="depth")
-nhl_grid_data_avail = nhl_grid["potential_density"].notna().any(dim="pressure").isel(longitude=0)
-nh01_nh03_bottle_sample_avail = nh01_nh03_bottle_samples.nitrate.notna()
-nh10_bottle_sample_avail = nh10_bottle_samples.nitrate.notna()
-ce01issp_bottle_sample_avail = ce01issp_bottle_samples.nitrate.notna().any(dim="pressure")
-ce02shsp_bottle_sample_avail = ce02shsp_bottle_samples.nitrate.notna().any(dim="pressure")
+wind_data_avail = wind["coare_y"].notnull()
+chloro_data_avail = estimated_chloro.notnull()
+vel_data_avail = velocity["u_proj"].notnull().any(dim="depth")
+inner_nitrate_data_avail = inner_nitrate["nitrate"].notnull().any(dim="depth")
+midshelf_nitrate_data_avail = midshelf_nitrate["nitrate"].notnull().any(dim="depth")
+nhl_grid_data_avail = nhl_grid["potential_density"].notnull().any(dim="pressure").isel(longitude=0)
+nh01_nh03_bottle_sample_avail = nh01_nh03_bottle_samples["nitrate"].notnull()
+nh10_bottle_sample_avail = nh10_bottle_samples["nitrate"].notnull()
+ce01issp_bottle_sample_avail = ce01issp_bottle_samples["nitrate"].notnull().any(dim="pressure")
+ce02shsp_bottle_sample_avail = ce02shsp_bottle_samples["nitrate"].notnull().any(dim="pressure")
 
 ax.fill_between(
     chloro_data_avail.time,

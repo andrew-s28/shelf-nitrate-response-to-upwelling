@@ -16,7 +16,7 @@ repos:
     additional_dependencies: [ruff]
     types_or: [python, jupyter]
     exclude: '^scripts/.*|^notebooks/functions/.*'
-  - repo: https://github.com/mwouts/jupytext
+- repo: https://github.com/mwouts/jupytext
   rev: v1.16.7  # CURRENT_TAG/COMMIT_HASH
   hooks:
   - id: jupytext

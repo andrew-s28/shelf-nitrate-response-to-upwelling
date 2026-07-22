@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: nitrate-upwelling
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from scipy.signal import find_peaks
+from scipy.stats import distributions
 
 # %%
 FIG_SAVE_FMT = "png"
@@ -56,6 +57,18 @@ optaa_al, flort_al = xr.align(
 
 estimated_chloro = (optaa_al.estimated_chlorophyll + flort_al.estimated_chlorophyll) / 2
 estimated_chloro = estimated_chloro.resample(time="1D").mean()
+
+# %%
+f"Correlation coefficient between floroumeter and spectrophotometer estimated chlorophyll: {xr.corr(optaa_al.estimated_chlorophyll, flort_al.estimated_chlorophyll).values:.2f}"
+
+# %%
+alpha = 0.05
+n_eff = len(estimated_chloro.dropna("time")) / 11
+rho_crit = float(
+    np.sqrt(
+        distributions.f.isf(alpha, 1, n_eff - 2) / (n_eff - 2 + distributions.f.isf(alpha, 1, n_eff - 2)),
+    ),
+)
 
 # %% [markdown]
 # ## Chlorophyll-Nitrate
@@ -129,6 +142,15 @@ axs[1].annotate(
 )
 
 # %%
+e_c, i_n, c_y = xr.align(
+    estimated_chloro,
+    inner_nitrate.nitrate.mean(dim="depth"),
+    wind["w5d"],
+)
+
+
+# %%
+f"Correlation coefficient between chlorophyll and wind: {xr.corr(e_c, c_y).values:.2f}"
 
 # %%
 
