@@ -17,7 +17,7 @@ import xarray as xr
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 DATA_DIR = SCRIPT_DIR / "../data/"
-MAT_VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.mat"
+MAT_VELOCITY_FILE = DATA_DIR / "NH10_Mooring_Data/ADCP_NH10_1997_2023_V4.mat"
 
 mat = sio.loadmat(MAT_VELOCITY_FILE, squeeze_me=True)
 mat.pop("__header__")
@@ -47,5 +47,5 @@ ds = xr.Dataset(
 )
 
 ds.to_netcdf(
-    DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_v5.nc",
+    DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2023_v4.nc",
 )

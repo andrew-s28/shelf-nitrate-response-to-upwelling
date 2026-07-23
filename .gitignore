@@ -175,9 +175,14 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
-figures/
-data/NH10_Mooring_Data/ADCP*
-data/NH10_Mooring_Data/nh10_hourly_data_1997_2021_rotated_filtered_streamwise*
-data/NH10_Mooring_Data/nh10_hourly_data_1997_2021.nc
-data/NH10_Mooring_Data/ADCP_NH10_1997_2024_V5*
+# ignore figures and presentation
+figures/*
 presentation/*.pptx
+
+# ignore select data files, all of which are reproducible via included scripts
+data/NH10_Mooring_Data/*
+data/CE01ISSP/*
+data/CE02SHSP/*
+data/NDBC_46050/*
+data/NHL_Gridded/newport_hydrographic_line_gridded_sections.nc
+data/GEBCO/*

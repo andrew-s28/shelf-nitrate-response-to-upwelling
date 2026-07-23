@@ -1,4 +1,4 @@
-"""Processes NDBC wind datasets to add exponentially decaying recent average W_kd."""
+"""Calculates and saves a one-sided exponentially decaying wind stress W_{kd} as in Austin and Barth (2002)."""
 
 # /// script
 # requires-python = ">=3.13"
@@ -6,13 +6,13 @@
 #     "numpy",
 #     "scipy",
 #     "tqdm",
-#     "xarray[io]",
+#     "xarray[io,parallel,accel]",
 # ]
 # ///
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,11 +22,15 @@ from scipy.integrate import simpson
 from tqdm import tqdm as tq
 
 if TYPE_CHECKING:
-    from numpy import floating
-    from numpy.typing import NDArray
+    from typing import TypeVar
+
+    from numpy import floating, int_
+    from numpy.typing import NBitBase, NDArray
+
+    T = floating[TypeVar("T", bound=NBitBase)]
 
 
-SCRIPT_DIR = Path().resolve()
+SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "../data/"
 
 # dataset file names
@@ -35,13 +39,13 @@ WIND_SAVE_FILE = Path("NDBC_46050/46050_wind_binned_with_w5d_w8d.nc")
 
 
 def ws_integrand(
-    tp: NDArray[floating],
-    t: float | floating,
-    tau: NDArray[floating],
-    k: float | floating,
-    rho: float | floating = 1025,
-) -> NDArray[floating]:
-    """Integrand for computation of 8-day exponentially weighted integral of wind stress. See Austin and Barth, 2002.
+    tp: NDArray[floating] | NDArray[int_],
+    t: float,
+    tau: NDArray[floating] | NDArray[int_],
+    k: float,
+    rho: float = 1025,
+) -> NDArray[floating] | NDArray[int_]:
+    """Integrand for computation of k-day exponentially weighted integral of wind stress. See Austin and Barth, 2002.
 
     Args:
         tp (array): integration variable, time
@@ -51,7 +55,7 @@ def ws_integrand(
         rho (scalar, optional): Density of sea water. Defaults to 1000.
 
     Returns:
-        array: integrand for use in scipy.integrate and computation of W8d
+        array: integrand for use in scipy.integrate and computation of W_kd
 
     """
     return tau[: t + 1] / rho * np.exp((tp[: t + 1] - t) / k)
@@ -63,8 +67,11 @@ def ws_integrand(
 
 wind = xr.open_dataset(DATA_DIR / WIND_FILE, decode_timedelta=True)
 
-# remove duplicate measurements and resample to daily mean
-wind = wind.drop_duplicates("time").resample({"time": "1D"}).mean()
+# Interpolate small gaps (up to 3 days) in wind data for W5d and W8d calculation
+wind = wind.interpolate_na(dim="time", max_gap=np.timedelta64(3, "D"), use_coordinate="time")
+
+# Resample to daily mean
+wind = wind.resample(time="1D").mean()
 
 # calculate day number for use in integration for w5d and w8d
 wind["day_num"] = (["time"], np.arange(len(wind.time)))
@@ -108,7 +115,7 @@ for i, _f in enumerate(tq(fout, desc="Calculating W5d")):
 wind["w5d"] = (["time"], fout)
 
 wind.attrs["created_by"] = "make_datasets.py"
-wind.attrs["created_on"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # noqa: DTZ005
+wind.attrs["created_on"] = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 wind.to_netcdf(
     DATA_DIR / WIND_SAVE_FILE,

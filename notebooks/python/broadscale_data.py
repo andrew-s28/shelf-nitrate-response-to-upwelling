@@ -90,7 +90,8 @@ plt.plot(broadscale.lon, broadscale.lat, ".")
 plt.axhline(nhl_lat)
 broadscale["transect_abbr"] = xr.DataArray(
     xr.apply_ufunc(
-        lambda d: [re.split("(\\d+)", str(s))[0] for s in d], broadscale.station.values
+        lambda d: [re.split("(\\d+)", str(s))[0] for s in d],
+        broadscale.station.values,
     ),
     dims="time",
 )
@@ -100,51 +101,40 @@ broadscale.where(broadscale.depth < 100).no3.max()
 
 # %%
 transect_station = np.array(
-    [broadscale.transect_abbr.values, broadscale.transect.values]
+    [broadscale.transect_abbr.values, broadscale.transect.values],
 ).T.astype(str)
 transect_station = np.unique(transect_station, axis=0)
 exclude_transect = transect_station[transect_station[:, 1] == "nan"].T[0]
-transect_station = transect_station[
-    (transect_station[:, 1] != "nan") & (transect_station[:, 0] != "nan")
-]
+transect_station = transect_station[(transect_station[:, 1] != "nan") & (transect_station[:, 0] != "nan")]
 transect_station = dict(transect_station)
 transect_lats = dict(
     zip(
         transect_station.keys(),
         np.array(
             [
-                broadscale.where(broadscale.transect_abbr == ta, drop=True)
-                .lat.median()
-                .values
+                broadscale.where(broadscale.transect_abbr == ta, drop=True).lat.median().values
                 for ta in transect_station.keys()
-            ]
+            ],
         ),
-    )
+        strict=False,
+    ),
 )
 
 # %%
 stations = np.array(
-    [t for t in dict(zip(broadscale.station.values, broadscale.transect.values)).keys()]
+    [t for t in dict(zip(broadscale.station.values, broadscale.transect.values, strict=False)).keys()],
 )
-nhl_lat = (
-    broadscale.where(broadscale.transect == "Newport Hydrographic", drop=True)
-    .lat.median()
-    .data
-)
+nhl_lat = broadscale.where(broadscale.transect == "Newport Hydrographic", drop=True).lat.median().data
 t = "Newport Hydrographic"
 broadscale_binned = []
 depth = np.concatenate(
-    [np.arange(0, 300, 10), np.arange(300, 500, 50), np.arange(500, 4000, 100)]
+    [np.arange(0, 300, 10), np.arange(300, 500, 50), np.arange(500, 4000, 100)],
 )
 for s in tqdm(stations):
     if s != "nan" and re.split("(\\d+)", s)[0] not in exclude_transect:
         transect = transect_station[re.split("(\\d+)", s)[0]]
         transect_lat = transect_lats[re.split("(\\d+)", s)[0]]
-        lat = (
-            broadscale.where(broadscale.transect == transect, drop=True)
-            .lat.median()
-            .values
-        )
+        lat = broadscale.where(broadscale.transect == transect, drop=True).lat.median().values
         temp = broadscale.where(broadscale.station == s, drop=True)
         temp = bin_profiles(temp, depth)
         lon = temp.lon.median().values
@@ -161,7 +151,7 @@ len(
     xr.apply_ufunc(
         lambda d: [re.split(r"(\d+)", str(s))[0] for s in d],
         broadscale_binned.station.values,
-    )
+    ),
 )
 
 # %%
@@ -180,7 +170,7 @@ for t in transect_station.values():
     lats.append(lat)
 lats = np.array(lats)
 transect_station = dict(
-    np.array(list(transect_station.items()))[np.argsort(lats)][::-1]
+    np.array(list(transect_station.items()))[np.argsort(lats)][::-1],
 )
 lats = np.sort(lats)[::-1]
 lats
@@ -190,14 +180,14 @@ plt.plot(broadscale_binned.lon, broadscale_binned.lat, ".")
 
 # %%
 broadscale_binned.sel(
-    station=[s.startswith("NH") for s in broadscale_binned.station.values]
+    station=[s.startswith("NH") for s in broadscale_binned.station.values],
 )
 
 
 # %%
 def reshape_plots(fig, axs, r, c):
     gs = gridspec.GridSpec(r, c, fig)
-    for i, (ax, g) in enumerate(zip(axs, gs)):
+    for i, (ax, g) in enumerate(zip(axs, gs, strict=False)):
         ax.set_subplotspec(g)
 
 
@@ -215,7 +205,7 @@ cc = cycler(marker=["o", "X", "+", "*", "o", "X", "+", "*", "o", "X", "+"]) + cy
         "#EE6677",
         "#228833",
         "#CCBB44",
-    ]
+    ],
 )
 cc = cycler(
     color=[
@@ -230,7 +220,7 @@ cc = cycler(
         "#AA4499",
         "#DDDDDD",
         "#000000",
-    ]
+    ],
 ) * cycler(marker=["o"])
 cc = list(cc)
 
@@ -260,8 +250,8 @@ for i, mile in enumerate(station_miles):
             broadscale_ci = np.array(
                 [
                     std / np.sqrt(n) * distributions.t(n - 1).isf(0.025)
-                    for std, n in zip(broadscale_std, broadscale_count)
-                ]
+                    for std, n in zip(broadscale_std, broadscale_count, strict=False)
+                ],
             )
             cc_idx = list(transect_station.keys()).index(re.split("(\\d+)", stat)[0])
             if len(broadscale_mean) > 0:
@@ -277,7 +267,7 @@ for i, mile in enumerate(station_miles):
                         [
                             broadscale_mean - broadscale_ci,
                             broadscale_mean + broadscale_ci,
-                        ]
+                        ],
                     ),
                     np.stack([-broadscale_depth, -broadscale_depth]),
                     marker="|",
@@ -294,39 +284,30 @@ reshape_plots(fig, axs, 2, 6)
 handles = [hj for hi in handles for hj in hi]
 labels = [lj for li in labels for lj in li]
 labels, handles = np.array(
-    [(hand, lab) for hand, lab in dict(zip(labels, handles)).items()]
+    [(hand, lab) for hand, lab in dict(zip(labels, handles, strict=False)).items()],
 ).T
 handles = handles[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 labels = labels[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 axs[-1].legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5))
 [ax.set_ylim(-200, 0) for ax in axs]
-pass
 
 # %%
 cc = cycler(marker=["o", "X", "+", "*", "o", "X", "+", "*", "o", "X", "+"]) + cycler(
@@ -342,7 +323,7 @@ cc = cycler(marker=["o", "X", "+", "*", "o", "X", "+", "*", "o", "X", "+"]) + cy
         "#EE6677",
         "#228833",
         "#CCBB44",
-    ]
+    ],
 )
 cc = cycler(
     color=[
@@ -357,7 +338,7 @@ cc = cycler(
         "#AA4499",
         "#DDDDDD",
         "#000000",
-    ]
+    ],
 ) * cycler(marker=["o"])
 cc = list(cc)
 
@@ -387,8 +368,8 @@ for i, mile in enumerate(station_miles):
             broadscale_ci = np.array(
                 [
                     std / np.sqrt(n) * distributions.t(n - 1).isf(0.025)
-                    for std, n in zip(broadscale_std, broadscale_count)
-                ]
+                    for std, n in zip(broadscale_std, broadscale_count, strict=False)
+                ],
             )
             cc_idx = list(transect_station.keys()).index(re.split("(\\d+)", stat)[0])
             if len(broadscale_mean) > 0:
@@ -404,7 +385,7 @@ for i, mile in enumerate(station_miles):
                         [
                             broadscale_mean - broadscale_ci,
                             broadscale_mean + broadscale_ci,
-                        ]
+                        ],
                     ),
                     np.stack([-broadscale_depth, -broadscale_depth]),
                     marker="|",
@@ -421,34 +402,26 @@ reshape_plots(fig, axs, 2, 6)
 handles = [hj for hi in handles for hj in hi]
 labels = [lj for li in labels for lj in li]
 labels, handles = np.array(
-    [(hand, lab) for hand, lab in dict(zip(labels, handles)).items()]
+    [(hand, lab) for hand, lab in dict(zip(labels, handles, strict=False)).items()],
 ).T
 handles = handles[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 labels = labels[
     np.argsort(
         np.array(
             [
-                transect_lats[
-                    list(transect_station.keys())[
-                        list(transect_station.values()).index(lab)
-                    ]
-                ]
+                transect_lats[list(transect_station.keys())[list(transect_station.values()).index(lab)]]
                 for lab in labels
-            ]
-        )
+            ],
+        ),
     )[::-1]
 ]
 axs[-1].legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5))
@@ -457,27 +430,28 @@ axs[-1].legend(handles, labels, loc="center", bbox_to_anchor=(0.5, 0.5))
 # %%
 (
     broadscale_binned.sel(
-        station=[s.startswith("GH") for s in broadscale_binned.station.values]
+        station=[s.startswith("GH") for s in broadscale_binned.station.values],
     ).lat.mean()
     - broadscale_binned.sel(
-        station=[s.startswith("NH") for s in broadscale_binned.station.values]
+        station=[s.startswith("NH") for s in broadscale_binned.station.values],
     ).lat.mean()
 )
 
 # %%
 (
     broadscale_binned.sel(
-        station=[s.startswith("NH") for s in broadscale_binned.station.values]
+        station=[s.startswith("NH") for s in broadscale_binned.station.values],
     ).lat.mean()
     - broadscale_binned.sel(
-        station=[s.startswith("TH") for s in broadscale_binned.station.values]
+        station=[s.startswith("TH") for s in broadscale_binned.station.values],
     ).lat.mean()
 )
 
 # %%
-for (stat, trans), lat_rel in zip(transect_station.items(), lats_reldiff):
+for (stat, trans), lat_rel in zip(transect_station.items(), lats_reldiff, strict=False):
     if trans in labels:
         temp = broadscale_binned.where(
-            broadscale_binned.transect_abbr == stat, drop=True
+            broadscale_binned.transect_abbr == stat,
+            drop=True,
         )
         plt.plot(temp.lon, temp.lat, "-o", color=cmap(lat_rel), label=trans)
