@@ -180,7 +180,7 @@ figures/*
 presentation/*.pptx
 
 # ignore select data files, all of which are reproducible via included scripts
-data/NH10_Mooring_Data/*
+data/NH10_ADCP_Data/*
 data/CE01ISSP/*
 data/CE02SHSP/*
 data/NDBC_46050/*
