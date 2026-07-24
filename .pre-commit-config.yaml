@@ -1,7 +1,7 @@
 exclude: \.(nc|zarr|grib|h5)$
 repos:
 - repo: https://github.com/mwouts/jupytext
-  rev: v1.16.7  # CURRENT_TAG/COMMIT_HASH
+  rev: v1.19.5  # CURRENT_TAG/COMMIT_HASH
   hooks:
   - id: jupytext
     args: [--set-formats, "ipynb,python//py:percent"]
@@ -9,7 +9,7 @@ repos:
     types_or: [python, jupyter]
     exclude: '^scripts/.*|^notebooks/functions/.*'
 - repo: https://github.com/mwouts/jupytext
-  rev: v1.16.7  # CURRENT_TAG/COMMIT_HASH
+  rev: v1.19.5  # CURRENT_TAG/COMMIT_HASH
   hooks:
   - id: jupytext
     args: [--sync, --pipe, "ruff check --fix {}"]
@@ -17,7 +17,7 @@ repos:
     types_or: [python, jupyter]
     exclude: '^scripts/.*|^notebooks/functions/.*'
 - repo: https://github.com/mwouts/jupytext
-  rev: v1.16.7  # CURRENT_TAG/COMMIT_HASH
+  rev: v1.19.5  # CURRENT_TAG/COMMIT_HASH
   hooks:
   - id: jupytext
     args: [--sync, --pipe, "ruff format {}"]
@@ -26,7 +26,7 @@ repos:
     exclude: '^scripts/.*|^notebooks/functions/.*'
 - repo: https://github.com/astral-sh/ruff-pre-commit
   # Ruff version.
-  rev: v0.9.9
+  rev: v0.16.0
   hooks:
     # Run the linter.
     - id: ruff
