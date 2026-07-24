@@ -6,7 +6,7 @@
 #     "xarray[accel,io,parallel]",
 # ]
 # ///
-"""This script converts the NH10 ADCP velocity data from a .mat file to a NetCDF file."""
+"""Convert the NH10 ADCP velocity data from a .mat file to a NetCDF file."""
 
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -24,14 +24,9 @@ mat.pop("__header__")
 mat.pop("__version__")
 mat.pop("__globals__")
 
-python_datetime = [
-    datetime.fromordinal(int(t)) + timedelta(days=t % 1) - timedelta(days=366)
-    for t in mat["time"]
-]
+python_datetime = [datetime.fromordinal(int(t)) + timedelta(days=t % 1) - timedelta(days=366) for t in mat["time"]]
 times = [
-    (np.datetime64(t) + np.timedelta64(30, "s"))
-    .astype("datetime64[m]")
-    .astype("datetime64[ns]")
+    (np.datetime64(t) + np.timedelta64(30, "s")).astype("datetime64[m]").astype("datetime64[ns]")
     for t in python_datetime
 ]
 

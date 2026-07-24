@@ -444,7 +444,7 @@ ds["coare_east"].attrs = {"comment": "Eastwards wind stress computed by COARE v3
 ds["coare_north"].attrs = {"comment": "Northwards wind stress computed by COARE v3.5", "units": "N/m^2"}
 ds["rh"].attrs = {"comment": "Relative humidity computed from air and dewpoint temperature", "units": "%"}
 ds["u_cs"].attrs = {"comment": "Cross-shelf component of wind velocity computed by principal axis", "units": "m/s"}
-ds["as"].attrs = {"comment": "Along-shelf component of wind velocity computed by principal axis", "units": "m/s"}
+ds["u_as"].attrs = {"comment": "Along-shelf component of wind velocity computed by principal axis", "units": "m/s"}
 ds["coare_x"].attrs = {
     "comment": "Cross-shelf component of wind stress computed by principal axis",
     "units": "m/s",

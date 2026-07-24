@@ -30,16 +30,16 @@ D_MAX_INNERSHELF = 0
 
 # dataset file names
 INNER_SHELF_NITRATE_FILE = Path(
-    "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26.nc",
+    "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26.nc",
 )
 INNER_SHELF_NITRATE_SAVE_FILE = Path(
-    "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc",
+    "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc",
 )
 MID_SHELF_NITRATE_FILE = Path(
-    "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15.nc",
+    "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15.nc",
 )
 MID_SHELF_NITRATE_SAVE_FILE = Path(
-    "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc",
+    "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc",
 )
 
 
@@ -216,7 +216,7 @@ inner_nitrate = xr.open_dataset(
 
 # rename for convienience
 inner_nitrate = inner_nitrate.rename(
-    {"salinity_corrected_nitrate": "nitrate", "sigma_theta": "density"},
+    {"sigma_theta": "density"},
 )
 
 inner_nitrate = make_nitrate_dataset(inner_nitrate, "innershelf", limit=10)
@@ -242,7 +242,7 @@ midshelf_nitrate = xr.open_dataset(
 
 # rename for convienience
 midshelf_nitrate = midshelf_nitrate.rename(
-    {"salinity_corrected_nitrate": "nitrate", "sigma_theta": "density"},
+    {"sigma_theta": "density"},
 )
 
 midshelf_nitrate = make_nitrate_dataset(midshelf_nitrate, "midshelf", limit=20)
