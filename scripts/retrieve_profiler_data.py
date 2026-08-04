@@ -48,20 +48,22 @@ def _filter_dates(nc_files: list, start_date: str, end_date: str) -> list:
         datetime.strptime(d.group(0).split("-")[0], "%Y%m%dT%H%M%S.%f").astimezone(
             UTC,
         )
-        for f, d in zip(nc_files, date_search, strict=True)
+        for d in date_search
         if d is not None
     ]
     nc_files_end_dates = [
         datetime.strptime(d.group(0).split("-")[1], "%Y%m%dT%H%M%S.%f").astimezone(
             UTC,
         )
-        for f, d in zip(nc_files, date_search, strict=True)
+        for d in date_search
         if d is not None
     ]
-    # filter by start date, including any data files that end after the start date
-    nc_files = [f for i, f in enumerate(nc_files) if nc_files_end_dates[i] >= start_date_dt]
-    # filter by end date, including any data files that start before the end date
-    nc_files = [f for i, f in enumerate(nc_files) if nc_files_start_dates[i] <= end_date_dt]
+    # filter by start and end date, including any data files that end after the start date or start before the end date
+    nc_files = [
+        f
+        for i, f in enumerate(nc_files)
+        if nc_files_end_dates[i] >= start_date_dt and nc_files_start_dates[i] <= end_date_dt
+    ]
     return nc_files
 
 
@@ -405,7 +407,7 @@ def profiler_binning(
     return out
 
 
-def _is_list_of_strings_or_string(lst: Any) -> bool:  # noqa:ANN401
+def _is_list_of_strings_or_string(lst: Any) -> bool:  # noqa: ANN401
     if isinstance(lst, str):
         return True
     return bool(lst) and isinstance(lst, list) and all(isinstance(elem, str) for elem in lst)
@@ -463,16 +465,13 @@ def _parse_args() -> tuple[list[str], str, str]:
     return sites, start_date, end_date
 
 
-def _make_dirs(out_path: str, site: str) -> str:
+def _make_dirs(out_path: str, site: str) -> Path:
     path = Path(out_path)
-    if not path.exists():
-        path.mkdir(parents=True, exist_ok=True)
+    path.mkdir(parents=True, exist_ok=True)
     site_path = path / site
-    if not site_path.exists():
-        site_path.mkdir(parents=True, exist_ok=True)
-    if not (path / "raw").exists():
-        (path / "raw").mkdir(parents=True, exist_ok=True)
-    return out_path
+    site_path.mkdir(parents=True, exist_ok=True)
+    (site_path / "raw").mkdir(parents=True, exist_ok=True)
+    return site_path
 
 
 def _get_datasets(site: str, start_date: str, end_date: str) -> list[xr.Dataset]:
@@ -757,55 +756,38 @@ if __name__ == "__main__":
             # custom baseline subtractions for deployments at inshore, based on nitrate-density relationship and some overlapping bottle samples
             for i, dep in enumerate(deployments):
                 d = np.unique(dep["deployment"])[0]
-                match d:
-                    case 1:
-                        baseline = 10
-                    case 2:
-                        baseline = -4
-                    case 5:
-                        baseline = 2
-                    case 6:
-                        baseline = 12
-                    case 7:
-                        baseline = 1
-                    case 8:
-                        baseline = 3
-                    case 10:
-                        baseline = -2
-                    case 13:
-                        baseline = -2
-                    case 14:
-                        baseline = 0
-                    case 15:
-                        baseline = 2
-                    case 16:
-                        baseline = 2
-                    case 17:
-                        baseline = 3
-                    case 19:
-                        baseline = 5
-                    case 21:
-                        baseline = 1
-                    case _:
-                        baseline = 0
-                deployments[i]["salinity_corrected_nitrate"] = dep["salinity_corrected_nitrate"] - baseline
+                # custom baseline subtractions for deployments at inshore, based on nitrate-density relationship and some overlapping bottle samples
+                baseline_subtraction = {
+                    1: 9,
+                    2: -2,
+                    4: -1,
+                    5: 1,
+                    6: 10,
+                    10: -2,
+                    14: -2,
+                    18: -1,
+                    19: 3,
+                    20: 3,
+                    21: 1,
+                    22: -1,
+                }
+                deployments[i]["salinity_corrected_nitrate"] = dep[
+                    "salinity_corrected_nitrate"
+                ] - baseline_subtraction.get(d, 0)
         elif site == "CE06ISSP":
             for i, dep in enumerate(deployments):
                 d = np.unique(dep["deployment"])[0]
-                match d:
-                    case 1:
-                        baseline = 5
-                    case 4:
-                        baseline = 2
-                    case 5:
-                        baseline = 2
-                    case 6:
-                        baseline = 1
-                    case 17:
-                        baseline = 3
-                    case _:
-                        baseline = 0
-                deployments[i]["salinity_corrected_nitrate"] = dep["salinity_corrected_nitrate"] - baseline
+                baseline_subtraction = {
+                    1: 5,
+                    4: 2,
+                    5: 2,
+                    6: 1,
+                    17: 3,
+                }
+                deployments[i]["salinity_corrected_nitrate"] = dep[
+                    "salinity_corrected_nitrate"
+                ] - baseline_subtraction.get(d, 0)
+
         # at the midshelf sites, adjust median surface nitrate to be near zero, but only if the minimum value is less than -3 mmol/m^3 as the expected accuracy of the SUNA is +/- 3 mmol/m^3
         # for some deployments that have many high nitrate events at the surface (consistent upwelling?), the median is too large
         # in these cases, we adjust the baseline to ensure that the minimum value is at least -3 mmol/m^3
@@ -865,6 +847,11 @@ if __name__ == "__main__":
 
         # save raw datasets
         for d in ds_orig:
-            d.to_netcdf(Path(out_path) / f"raw/{site}_dep{d.deployment[0]:02.0f}.nc", mode="w")
+            start_date_dep = d.time.min().values.astype("datetime64[D]").astype(str)
+            end_date_dep = d.time.max().values.astype("datetime64[D]").astype(str)
+            d.to_netcdf(
+                Path(out_path) / f"raw/{site}_dep{d.deployment[0]:02.0f}_{start_date_dep}_{end_date_dep}.nc",
+                mode="w",
+            )
 
         print(f"done! {site} data saved to {out_path}.")
