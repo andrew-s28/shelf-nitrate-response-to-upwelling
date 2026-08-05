@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: nitrate-upwelling
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -39,17 +39,13 @@ NOTEBOOK_DIR = Path().cwd().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
-OLD_VEL_PATH = list(
-    Path(DATA_DIR / "NH10_Mooring_Data/").glob("nh10_hourly_data_1997_2021_part*.nc"),
-)
-NEW_VEL_PATH = DATA_DIR / "NH10_Mooring_Data/ADCP_NH10_1997_2024_V5.nc"
+VEL_PATH = DATA_DIR / "NH10_ADCP_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
 
 VELOCITY_VARIABLE = "cs_proj"
 
@@ -633,7 +629,7 @@ for m in composite_midshelf_nitrate_flux_monthly["month"].to_numpy():
 
     # 20 m to 40 m flux
     flux_middle_list.append(
-        composite_midshelf_nitrate_flux_monthly.sel(month=m, depth=slice(20, 40))["mean"]
+        composite_midshelf_nitrate_flux_monthly.sel(month=m, depth=slice(20, 60))["mean"]
         .interpolate_na(dim="depth")
         .mean(dim="depth"),
     )

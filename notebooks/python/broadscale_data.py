@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: .venv
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -36,7 +36,7 @@ BROADSCALE_FILE = DATA_DIR / "broadscale/Nitrate_AllProjects.csv"
 
 
 # %%
-def bin_profiles(d, z):
+def _bin_profiles(d: xr.Dataset, z: np.ndarray) -> xr.Dataset:
     types = [d[i].dtype for i in d]
     var_names = list(d.keys())
     exclude = []
@@ -90,7 +90,7 @@ plt.plot(broadscale.lon, broadscale.lat, ".")
 plt.axhline(nhl_lat)
 broadscale["transect_abbr"] = xr.DataArray(
     xr.apply_ufunc(
-        lambda d: [re.split("(\\d+)", str(s))[0] for s in d],
+        lambda d: [re.split(r"(\d+)", str(s))[0] for s in d],
         broadscale.station.values,
     ),
     dims="time",
@@ -113,7 +113,7 @@ transect_lats = dict(
         np.array(
             [
                 broadscale.where(broadscale.transect_abbr == ta, drop=True).lat.median().values
-                for ta in transect_station.keys()
+                for ta in transect_station
             ],
         ),
         strict=False,
@@ -122,7 +122,7 @@ transect_lats = dict(
 
 # %%
 stations = np.array(
-    [t for t in dict(zip(broadscale.station.values, broadscale.transect.values, strict=False)).keys()],
+    list(dict(zip(broadscale.station.values, broadscale.transect.values, strict=False))),
 )
 nhl_lat = broadscale.where(broadscale.transect == "Newport Hydrographic", drop=True).lat.median().data
 t = "Newport Hydrographic"
@@ -131,12 +131,12 @@ depth = np.concatenate(
     [np.arange(0, 300, 10), np.arange(300, 500, 50), np.arange(500, 4000, 100)],
 )
 for s in tqdm(stations):
-    if s != "nan" and re.split("(\\d+)", s)[0] not in exclude_transect:
-        transect = transect_station[re.split("(\\d+)", s)[0]]
-        transect_lat = transect_lats[re.split("(\\d+)", s)[0]]
+    if s != "nan" and re.split(r"(\d+)", s)[0] not in exclude_transect:
+        transect = transect_station[re.split(r"(\d+)", s)[0]]
+        transect_lat = transect_lats[re.split(r"(\d+)", s)[0]]
         lat = broadscale.where(broadscale.transect == transect, drop=True).lat.median().values
         temp = broadscale.where(broadscale.station == s, drop=True)
-        temp = bin_profiles(temp, depth)
+        temp = _bin_profiles(temp, depth)
         lon = temp.lon.median().values
         temp = temp.expand_dims({"station": [s]}).drop_vars("lat")
         temp["lat"] = (["station"], [lat])
@@ -185,10 +185,10 @@ broadscale_binned.sel(
 
 
 # %%
-def reshape_plots(fig, axs, r, c):
+def _reshape_plots(fig: plt.Figure, axs: list[plt.Axes], r: int, c: int) -> None:
     gs = gridspec.GridSpec(r, c, fig)
-    for i, (ax, g) in enumerate(zip(axs, gs, strict=False)):
-        ax.set_subplotspec(g)
+    for i, ax in enumerate(axs):
+        ax.set_subplotspec(gs[i])
 
 
 # %%
@@ -224,7 +224,7 @@ cc = cycler(
 ) * cycler(marker=["o"])
 cc = list(cc)
 
-cmap = cmo.tools.crop_by_percent(cmo.balance_i, 20, which="both")
+cmap = cmo.tools.crop_by_percent(cmo.balance_i, 20, which="both")  # ty:ignore[unresolved-attribute]
 lats_reldiff = 0.5 * (lats - nhl_lat) / np.abs((lats - nhl_lat)[-1]) + 0.5
 
 min_count = 3
@@ -238,7 +238,7 @@ for i, mile in enumerate(station_miles):
 
     for stat in broadscale_binned.station.values:
         temp = broadscale_binned.sel(station=stat)
-        if int(re.split("(\\d+)", stat)[1]) == mile:
+        if int(re.split(r"(\d+)", stat)[1]) == mile:
             broadscale_depth = temp.depth.values
             broadscale_mean = temp.no3.mean(dim="time").values
             broadscale_std = temp.no3.std(dim="time").values
@@ -253,14 +253,14 @@ for i, mile in enumerate(station_miles):
                     for std, n in zip(broadscale_std, broadscale_count, strict=False)
                 ],
             )
-            cc_idx = list(transect_station.keys()).index(re.split("(\\d+)", stat)[0])
+            cc_idx = list(transect_station.keys()).index(re.split(r"(\d+)", stat)[0])
             if len(broadscale_mean) > 0:
                 axs[i].plot(
                     broadscale_mean,
                     -broadscale_depth,
                     marker="o",
                     color=cmap(lats_reldiff)[cc_idx],
-                    label=transect_station[re.split("(\\d+)", stat)[0]],
+                    label=transect_station[re.split(r"(\d+)", stat)[0]],
                 )
                 axs[i].plot(
                     np.stack(
@@ -280,7 +280,7 @@ for i, mile in enumerate(station_miles):
     labels.append(lab)
 
 axs[-1].set_axis_off()
-reshape_plots(fig, axs, 2, 6)
+_reshape_plots(fig, axs, 2, 6)
 handles = [hj for hi in handles for hj in hi]
 labels = [lj for li in labels for lj in li]
 labels, handles = np.array(
@@ -342,7 +342,7 @@ cc = cycler(
 ) * cycler(marker=["o"])
 cc = list(cc)
 
-cmap = cmo.tools.crop_by_percent(cmo.balance_i, 20, which="both")
+cmap = cmo.tools.crop_by_percent(cmo.balance_i, 20, which="both")  # ty:ignore[unresolved-attribute]
 lats_reldiff = 0.5 * (lats - nhl_lat) / np.abs((lats - nhl_lat)[-1]) + 0.5
 
 min_count = 3
@@ -356,7 +356,7 @@ for i, mile in enumerate(station_miles):
 
     for stat in broadscale_binned.station.values:
         temp = broadscale_binned.sel(station=stat)
-        if int(re.split("(\\d+)", stat)[1]) == mile:
+        if int(re.split(r"(\d+)", stat)[1]) == mile:
             broadscale_depth = temp.depth.values
             broadscale_mean = temp.no3.mean(dim="time").values
             broadscale_std = temp.no3.std(dim="time").values
@@ -371,14 +371,14 @@ for i, mile in enumerate(station_miles):
                     for std, n in zip(broadscale_std, broadscale_count, strict=False)
                 ],
             )
-            cc_idx = list(transect_station.keys()).index(re.split("(\\d+)", stat)[0])
+            cc_idx = list(transect_station.keys()).index(re.split(r"(\d+)", stat)[0])
             if len(broadscale_mean) > 0:
                 axs[i].plot(
                     broadscale_mean,
                     -broadscale_depth,
                     marker="o",
                     color=cmap(lats_reldiff)[cc_idx],
-                    label=transect_station[re.split("(\\d+)", stat)[0]],
+                    label=transect_station[re.split(r"(\d+)", stat)[0]],
                 )
                 axs[i].plot(
                     np.stack(
@@ -398,7 +398,7 @@ for i, mile in enumerate(station_miles):
     labels.append(lab)
 
 axs[-1].set_axis_off()
-reshape_plots(fig, axs, 2, 6)
+_reshape_plots(fig, axs, 2, 6)
 handles = [hj for hi in handles for hj in hi]
 labels = [lj for li in labels for lj in li]
 labels, handles = np.array(

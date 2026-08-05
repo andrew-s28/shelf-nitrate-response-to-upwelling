@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
 #     display_name: nitrate-upwelling
 #     language: python
@@ -38,8 +38,8 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empt
 NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
-INNER_NITRATE_PATH = DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17.nc"
-MID_NITRATE_PATH = DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14.nc"
+INNER_NITRATE_PATH = DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26.nc"
+MID_NITRATE_PATH = DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15.nc"
 
 # %%
 # start by loading and examining the nitrate dataset
@@ -85,8 +85,8 @@ def plot_nitrate(
 
 
 # %%
-plot_nitrate(inner_nitrate["salinity_corrected_nitrate"])
-plot_nitrate(mid_nitrate["salinity_corrected_nitrate"])
+plot_nitrate(inner_nitrate["nitrate"])
+plot_nitrate(mid_nitrate["nitrate"])
 
 # %% [markdown]
 # Okay, looking a bit rough! We will clean this up.
@@ -125,8 +125,8 @@ mid_nitrate_interp = mid_nitrate_interp.interpolate_na(
 ).interpolate_na(dim="depth", method="polynomial", order=1, limit=10)
 
 # %%
-plot_nitrate(inner_nitrate_interp["salinity_corrected_nitrate"])
-plot_nitrate(mid_nitrate_interp["salinity_corrected_nitrate"])
+plot_nitrate(inner_nitrate_interp["nitrate"])
+plot_nitrate(mid_nitrate_interp["nitrate"])
 
 
 # %% [markdown]
@@ -186,10 +186,10 @@ mid_nitrate_extrap = extrapolate_bottom_nitrate(mid_nitrate_extrap, limit=20)
 
 # %%
 plot_nitrate(
-    inner_nitrate_extrap["salinity_corrected_nitrate"],
+    inner_nitrate_extrap["nitrate"],
 )
 plot_nitrate(
-    mid_nitrate_extrap["salinity_corrected_nitrate"],
+    mid_nitrate_extrap["nitrate"],
 )
 
 # %% [markdown]
@@ -203,11 +203,11 @@ plot_nitrate(
 
 # %%
 # depth varying dn/dt
-inner_nitrate_extrap["dndt"] = inner_nitrate_extrap["salinity_corrected_nitrate"].differentiate(
+inner_nitrate_extrap["dndt"] = inner_nitrate_extrap["nitrate"].differentiate(
     "time",
     datetime_unit="s",
 )
-mid_nitrate_extrap["dndt"] = mid_nitrate_extrap["salinity_corrected_nitrate"].differentiate(
+mid_nitrate_extrap["dndt"] = mid_nitrate_extrap["nitrate"].differentiate(
     "time",
     datetime_unit="s",
 )

@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
 #     display_name: nitrate-upwelling (3.12.9)
 #     language: python
@@ -38,39 +38,28 @@ DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
+VEL_PATH = DATA_DIR / "NH10_ADCP_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
+CHL_PATH = DATA_DIR / "CE01ISSM/CE01ISSM_chlorophyll_2014-04-17_2025-09-22.nc"
 
-OPTAA_PATH = DATA_DIR / "CE01ISSM/ce01issm_optaa_processed.nc"
-FLORT_PATH = DATA_DIR / "CE01ISSM/ce01issm_flort_processed.nc"
 
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
-
-NH10_BOTTLE_SAMPLES_PATH = DATA_DIR / "NHL_Gridded/NH10_bottle_samples.nc"
-NH01_NH03_BOTTLE_SAMPLES_PATH = DATA_DIR / "NHL_Gridded/NH01_NH03_bottle_samples.nc"
-CE01ISSP_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/ea_ship_data/CE01ISSP_bottle_samples.nc"
-CE02SHSP_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/ea_ship_data/CE02SHSP_bottle_samples.nc"
+NH10_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/NH10_bottle_samples.nc"
+NH01_NH03_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/NH01_NH03_bottle_samples.nc"
+CE01ISSP_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/CE01ISSP_bottle_samples.nc"
+CE02SHSP_BOTTLE_SAMPLES_PATH = DATA_DIR / "ship/CE02SHSP_bottle_samples.nc"
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
 velocity = xr.open_dataset(VEL_PATH)
-optaa = xr.open_dataset(OPTAA_PATH)
-flort = xr.open_dataset(FLORT_PATH)
-
-flort = flort.drop_dims("stats")
-optaa_al, flort_al = xr.align(
-    optaa.drop_duplicates("time"),
-    flort.drop_duplicates("time"),
-)
-
-estimated_chloro = (optaa_al["estimated_chlorophyll"] + flort_al["estimated_chlorophyll"]) / 2
-estimated_chloro = estimated_chloro.resample(time="1D").mean()
+chlorophyll = xr.open_dataset(CHL_PATH)
+chlorophyll = chlorophyll.sortby("time").resample(time="1D").mean()
 
 nhl_grid = xr.load_dataset(
     "../data/NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
@@ -85,7 +74,7 @@ ce02shsp_bottle_samples = xr.open_dataset(CE02SHSP_BOTTLE_SAMPLES_PATH).resample
 fig, ax = plt.subplots(figsize=(10, 4))
 
 wind_data_avail = wind["coare_y"].notnull()
-chloro_data_avail = estimated_chloro.notnull()
+chloro_data_avail = chlorophyll["chlorophyll_a"].notnull()
 vel_data_avail = velocity["u_proj"].notnull().any(dim="depth")
 inner_nitrate_data_avail = inner_nitrate["nitrate"].notnull().any(dim="depth")
 midshelf_nitrate_data_avail = midshelf_nitrate["nitrate"].notnull().any(dim="depth")
@@ -577,6 +566,301 @@ ax2.annotate(
 
 plt.savefig(
     FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/study_region_map.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+    dpi=600,
+)
+
+# %%
+# map for data in brief article with only NH01, NH03, and profilers
+
+lat_min, lat_max = 44.25, 45
+lon_min, lon_max = -125, -123.75
+
+region_lon_min, region_lon_max = -126, -123
+region_lat_min, region_lat_max = 44, 49
+
+aspect_1 = (region_lon_max - region_lon_min) / (region_lat_max - region_lat_min)
+aspect_2 = (lon_max - lon_min) / (lat_max - lat_min)
+width_ratio = aspect_2 / aspect_1
+
+fig, (ax1, ax2) = plt.subplots(
+    1,
+    2,
+    figsize=(12, 6),
+    subplot_kw={"projection": ccrs.PlateCarree()},
+    gridspec_kw={"width_ratios": [1, width_ratio], "wspace": 0.3},
+)
+
+ax1 = cast("GeoAxes", ax1)
+ax1.set_extent([region_lon_min, region_lon_max, region_lat_min, region_lat_max], crs=ccrs.PlateCarree())
+
+deep_contours = np.concatenate((np.arange(-4000, -500, 500), np.arange(-200, -50, 100)))
+ctr = ax1.contour(
+    bathy["lon"].sel(lon=slice(region_lon_min, region_lon_max)),
+    bathy["lat"].sel(lat=slice(region_lat_min, region_lat_max)),
+    bathy["elevation"].sel(lat=slice(region_lat_min, region_lat_max), lon=slice(region_lon_min, region_lon_max)),
+    transform=ccrs.PlateCarree(),
+    levels=deep_contours,
+    colors="k",
+    linewidths=1,
+    linestyles="solid",
+)
+
+plt.clabel(ctr, levels=deep_contours, inline=True, fmt="%d", fontsize=8)
+
+ax1.contourf(
+    bathy["lon"],
+    bathy["lat"],
+    bathy["elevation"],
+    cmap=cmo.deep_r,
+    levels=np.concatenate((deep_contours, [0])),
+    transform=ccrs.PlateCarree(),
+)
+
+ax1.plot(
+    [lon_min, lon_max, lon_max, lon_min, lon_min],
+    [lat_min, lat_min, lat_max, lat_max, lat_min],
+    color="#EE6677",
+    linestyle="-",
+    linewidth=2,
+)
+
+ax1.plot(
+    NEWPORT["lon"],
+    NEWPORT["lat"],
+    color="red",
+    marker="o",
+    linestyle="None",
+    markersize=6,
+    transform=ccrs.PlateCarree(),
+)
+
+ax1.annotate(
+    "WASHINGTON",
+    xy=(-124.5, 48.5),
+    xytext=(-124.4, 48),
+    arrowprops=None,
+    fontsize=9,
+    verticalalignment="top",
+    horizontalalignment="left",
+    transform=ccrs.PlateCarree(),
+    fontweight="bold",
+)
+
+ax1.annotate(
+    "OREGON",
+    xy=(-124.5, 46.5),
+    xytext=(-123.85, 45.7),
+    arrowprops=None,
+    fontsize=9,
+    verticalalignment="top",
+    horizontalalignment="left",
+    transform=ccrs.PlateCarree(),
+    fontweight="bold",
+)
+
+ax1.annotate(
+    "Newport",
+    xy=(NEWPORT["lon"], NEWPORT["lat"]),
+    xytext=(NEWPORT["lon"] + 0.1, NEWPORT["lat"] + 0.05),
+    arrowprops=None,
+    fontsize=8,
+    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "white", "lw": 0.5},
+    verticalalignment="bottom",
+    horizontalalignment="left",
+    transform=ccrs.PlateCarree(),
+)
+
+ax1.set_xticks(np.arange(region_lon_min, region_lon_max + 0.1, 1), crs=ccrs.PlateCarree())
+ax1.set_yticks(np.arange(region_lat_min, region_lat_max + 0.1, 1), crs=ccrs.PlateCarree())
+ax1.set_xticklabels([])
+ax1.set_yticklabels([])
+
+ax1.set_xlabel("Longitude ($\\degree$E)")
+lon_formatter = LongitudeFormatter()
+ax1.xaxis.set_major_formatter(lon_formatter)
+ax1.set_xticklabels([f"{lon:.0f}" for lon in np.arange(region_lon_min, region_lon_max + 0.1, 1)])
+
+ax1.set_ylabel("Latitude ($\\degree$N)")
+lat_formatter = LatitudeFormatter()
+ax1.yaxis.set_major_formatter(lat_formatter)
+ax1.set_yticklabels([f"{lat:.0f}" for lat in np.arange(region_lat_min, region_lat_max + 0.1, 1)])
+ax1.coastlines()
+ax1.add_feature(cfeature.BORDERS, linestyle="-", linewidth=1.5)
+ax1.add_feature(cfeature.STATES, linestyle=":")
+
+ax2 = cast("GeoAxes", ax2)
+ax2.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
+
+shallow_contours = np.concatenate((np.arange(-2000, -50, 100), [-80, -25]))
+
+ctr = ax2.contour(
+    bathy["lon"].sel(lon=slice(lon_min, lon_max)),
+    bathy["lat"].sel(lat=slice(lat_min, lat_max)),
+    bathy["elevation"].sel(lat=slice(lat_min, lat_max), lon=slice(lon_min, lon_max)),
+    transform=ccrs.PlateCarree(),
+    levels=shallow_contours,
+    colors="k",
+    linewidths=1,
+    linestyles="solid",
+)
+
+plt.clabel(ctr, levels=shallow_contours, inline=True, fmt="%d", fontsize=8)
+
+ax2.contourf(
+    bathy["lon"],
+    bathy["lat"],
+    bathy["elevation"],
+    cmap=cmo.deep_r,
+    levels=np.concatenate((shallow_contours, [0])),
+    transform=ccrs.PlateCarree(),
+)
+
+ax2.plot(
+    station_positions["lon"],
+    station_positions["lat"],
+    color="#000000",
+    marker="o",
+    linestyle="-",
+    markersize=6,
+    linewidth=2,
+    transform=ccrs.PlateCarree(),
+    label="NHL Stations",
+)
+
+ax2.plot(
+    CE01ISSP["lon"],
+    CE01ISSP["lat"],
+    color="#228833",
+    marker="^",
+    linestyle="None",
+    markersize=10,
+    transform=ccrs.PlateCarree(),
+    label="OOI CE01",
+)
+
+ax2.plot(
+    CE02SHSP["lon"],
+    CE02SHSP["lat"],
+    color="#AA3377",
+    marker="s",
+    linestyle="None",
+    markersize=10,
+    transform=ccrs.PlateCarree(),
+    label="OOI CE02",
+)
+
+ax2.plot(
+    NEWPORT["lon"],
+    NEWPORT["lat"],
+    color="red",
+    marker="o",
+    linestyle="None",
+    markersize=10,
+    transform=ccrs.PlateCarree(),
+)
+
+nh10 = station_positions.loc[station_positions["station"] == "NH10"].squeeze()
+nh10 = cast("pd.Series", nh10)  # satisfy type checker
+ax2.annotate(
+    "NH10",
+    xy=(nh10["lon"], nh10["lat"]),
+    xytext=(nh10["lon"] - 0.01, nh10["lat"] + 0.15),
+    arrowprops={"arrowstyle": "->", "relpos": (0.75, 1)},
+    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "white", "lw": 0.5},
+    fontsize=10,
+    verticalalignment="top",
+    horizontalalignment="right",
+    transform=ccrs.PlateCarree(),
+)
+
+nh01 = station_positions.loc[station_positions["station"] == "NH01"].squeeze()
+nh01 = cast("pd.Series", nh01)  # satisfy type checker
+ax2.annotate(
+    "NH01",
+    xy=(nh01["lon"], nh01["lat"]),
+    xytext=(nh01["lon"] + 0.14, nh01["lat"] + 0.14),
+    arrowprops={"arrowstyle": "->"},
+    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "white", "lw": 0.5},
+    fontsize=10,
+    verticalalignment="top",
+    horizontalalignment="right",
+    transform=ccrs.PlateCarree(),
+)
+
+nh03 = station_positions.loc[station_positions["station"] == "NH03"].squeeze()
+nh03 = cast("pd.Series", nh03)  # satisfy type checker
+ax2.annotate(
+    "NH03",
+    xy=(nh03["lon"], nh03["lat"]),
+    xytext=(nh03["lon"] + 0.04, nh03["lat"] + 0.1),
+    arrowprops={"arrowstyle": "->"},
+    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "white", "lw": 0.5},
+    fontsize=10,
+    verticalalignment="top",
+    horizontalalignment="right",
+    transform=ccrs.PlateCarree(),
+)
+
+ax2.annotate(
+    "CE01ISSP\nInner shelf profiler",
+    xy=(CE01ISSP["lon"], CE01ISSP["lat"]),
+    xytext=(CE01ISSP["lon"] + 0.06, CE01ISSP["lat"] - 0.16),
+    arrowprops={"arrowstyle": "->"},
+    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "white", "lw": 0.5},
+    fontsize=10,
+    verticalalignment="bottom",
+    horizontalalignment="center",
+    transform=ccrs.PlateCarree(),
+)
+
+ax2.annotate(
+    "CE02SHSP\nMidshelf profiler",
+    xy=(CE02SHSP["lon"], CE02SHSP["lat"]),
+    xytext=(CE02SHSP["lon"] - 0.05, CE02SHSP["lat"] - 0.05),
+    arrowprops={"arrowstyle": "->", "relpos": (0.75, 1)},
+    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "white", "lw": 0.5},
+    fontsize=10,
+    verticalalignment="top",
+    horizontalalignment="center",
+    transform=ccrs.PlateCarree(),
+)
+
+ax2.annotate(
+    "Newport",
+    xy=(NEWPORT["lon"], NEWPORT["lat"]),
+    xytext=(NEWPORT["lon"] + 0.015, NEWPORT["lat"] + 0.015),
+    arrowprops=None,
+    fontsize=10,
+    verticalalignment="bottom",
+    transform=ccrs.PlateCarree(),
+)
+
+ax2.set_xticks(np.arange(lon_min, lon_max + 0.1, 0.25), crs=ccrs.PlateCarree())
+ax2.set_yticks(np.arange(lat_min, lat_max + 0.1, 0.25), crs=ccrs.PlateCarree())
+ax2.set_xticklabels([])
+ax2.set_yticklabels([])
+
+ax2.set_xlabel("Longitude ($\\degree$E)")
+lon_formatter = LongitudeFormatter()
+ax2.xaxis.set_major_formatter(lon_formatter)
+ax2.set_xticklabels(np.arange(lon_min, lon_max + 0.1, 0.25))
+
+ax2.set_ylabel("Latitude ($\\degree$N)")
+lat_formatter = LatitudeFormatter()
+ax2.yaxis.set_major_formatter(lat_formatter)
+ax2.set_yticklabels(np.arange(lat_min, lat_max + 0.1, 0.25))
+
+
+ax2.coastlines()
+ax2.add_feature(cfeature.BORDERS, linestyle="-", linewidth=1.5)
+ax2.add_feature(cfeature.STATES, linestyle=":")
+
+ax2.legend(loc="lower right", framealpha=1)
+
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/study_region_map_for_dib.{FIG_SAVE_FMT}",
     format=FIG_SAVE_FMT,
     bbox_inches="tight",
     dpi=600,

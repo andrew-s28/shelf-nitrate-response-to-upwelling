@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
 #     display_name: nitrate-upwelling (3.12.9)
 #     language: python
@@ -38,10 +38,10 @@ NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2023-09-17_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-07-14_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 GEBCO_PATH = list(Path(DATA_DIR / "GEBCO/").glob("*.nc"))
@@ -710,7 +710,7 @@ for i, t in enumerate(tqdm(tdelay)):
         coords={"time": wind["time"]},
     )
     temp_nitrate, temp_wind = xr.align(
-        inner_nitrate["depth_integrated_nitrate"],
+        inner_nitrate["nitrate"].mean(dim="depth"),
         temp["wkd"],
     )
     m = dt2cal(temp_wind["time"].values).T[1]
@@ -732,37 +732,3 @@ ax.set_ylabel("Correlation with $\\mathsf{W_{kd}}$")
 ax.legend()
 ax.set_xlim(1, 15)
 ax.minorticks_off()
-
-# %%
-wind_use = "w5d"
-wind_al_nhl, nhl_al_wind = xr.align(wind, nhl_grid)
-m = dt2cal(nhl_al_wind["time"].values).T[1]
-mask = (~np.isnan(nhl_al_wind.Zf)) & (~np.isnan(wind_al_nhl[wind_use]))
-wls_fit = sm.WLS(
-    nhl_al_wind["Zf"][mask].values,
-    sm.add_constant(wind_al_nhl[wind_use][mask].values),
-    1 / (nhl_al_wind["Zf_err"][mask].values ** 2),
-    missing="drop",
-).fit()
-fit = wls_fit.params[::-1]
-r_squared = wls_fit.rsquared
-
-fig, ax = plt.subplots(figsize=(3, 3))
-ax.errorbar(
-    wind_al_nhl[wind_use][mask],
-    nhl_al_wind["Zf"][mask],
-    nhl_al_wind["Zf_err"][mask],
-    linestyle="",
-    marker=".",
-    elinewidth=2,
-)
-ax.plot(
-    wind_al_nhl[wind_use][mask],
-    wind_al_nhl[wind_use][mask] * fit[0] + fit[1],
-    label=f"$\\beta_0$={fit[1]:.2f}\n$\\beta_1$={fit[0]:.2f}",
-)
-ax.set_ylim(-100, 150)
-ax.set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{N \\; m^{-2}}$]", labelpad=0)
-ax.set_ylabel("$\\mathsf{Z_f}$ [$\\mathsf{m}$]", labelpad=-10)
-bbox = {"boxstyle": "round", "fc": "w"}
-wls_fit.summary()

@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: nitrate-upwelling
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -20,11 +20,9 @@ from pathlib import Path
 from typing import cast
 
 import cmocean.cm as cmo
-import gsw
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import statsmodels.api as sm
 import xarray as xr
 from matplotlib import colormaps as cmaps
@@ -46,13 +44,13 @@ NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
+VEL_PATH = DATA_DIR / "NH10_ADCP_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
@@ -62,6 +60,11 @@ velocity = xr.open_dataset(VEL_PATH)
 # make sure nan times are removed for bottle sample comparison
 inner_nitrate = inner_nitrate.dropna(dim="time", how="all", subset=["nitrate"])
 midshelf_nitrate = midshelf_nitrate.dropna(dim="time", how="all", subset=["nitrate"])
+
+inner_ooi_crse = xr.open_dataset(DATA_DIR / "ship/CE01ISSP_bottle_samples.nc")
+midshelf_ooi_crse = xr.open_dataset(DATA_DIR / "ship/CE02SHSP_bottle_samples.nc")
+inner_nhl_crse = xr.open_dataset(DATA_DIR / "ship/NH01_NH03_bottle_samples.nc")
+midshelf_nhl_crse = xr.open_dataset(DATA_DIR / "ship/NH10_bottle_samples.nc")
 
 
 # %%
@@ -116,69 +119,6 @@ def get_overlapping_bottles(
 # ## Inner Shelf Nitrate Bottle Sample Comparison
 
 # %%
-# Load the OOI Endurance Array ship data
-file_list = Path(DATA_DIR / "ship/ea_ship_data/").glob("*.csv")
-df_list = []
-col_names = [
-    "Station",
-    "Start Time [UTC]",
-    "Start Latitude [degrees]",
-    "Start Longitude [degrees]",
-    "CTD Pressure [db]",
-    "CTD Salinity 1 [psu]",
-    "CTD Salinity 2 [psu]",
-    "CTD Temperature 1 [deg C]",
-    "CTD Temperature 2 [deg C]",
-    "Discrete Nitrate [uM]",
-]
-for f in file_list:
-    df_temp = pd.read_csv(DATA_DIR / "ship/ea_ship_data/" / f, usecols=col_names)
-    rows = df_temp.loc[df_temp["Station"] == "CE01"]
-    df_list.append(rows)
-
-inner_ooi_crse = pd.concat(df_list)
-inner_ooi_crse = inner_ooi_crse.rename(
-    columns={
-        "Start Time [UTC]": "time",
-        "Start Latitude [degrees]": "lat",
-        "Start Longitude [degrees]": "lon",
-        "CTD Pressure [db]": "pressure",
-        "CTD Salinity 1 [psu]": "sal1",
-        "CTD Salinity 2 [psu]": "sal2",
-        "CTD Temperature 1 [deg C]": "temp1",
-        "CTD Temperature 2 [deg C]": "temp2",
-        "Discrete Nitrate [uM]": "nitrate",
-    },
-)
-inner_ooi_crse["time"] = pd.to_datetime(inner_ooi_crse["time"])
-
-# convert to xarray - need unique indices for time and pressure
-inner_ooi_crse = inner_ooi_crse.iloc[
-    np.unique(inner_ooi_crse.set_index(["time", "pressure"]).index, return_index=True)[1]
-]
-inner_ooi_crse = inner_ooi_crse.set_index(["time", "pressure"])
-inner_ooi_crse = inner_ooi_crse.to_xarray()
-inner_ooi_crse["time"] = pd.DatetimeIndex(inner_ooi_crse["time"].values)
-
-# remove some bad data
-inner_ooi_crse = inner_ooi_crse.where(inner_ooi_crse["nitrate"] > -100, drop=True)
-
-# calculate potential density anomaly
-inner_ooi_crse["pot_density_anom"] = gsw.density.sigma0(
-    inner_ooi_crse["sal1"],
-    gsw.conversions.CT_from_t(
-        inner_ooi_crse["sal1"],
-        inner_ooi_crse["temp1"],
-        inner_ooi_crse["pressure"],
-    ),
-)
-
-# save bottle samples data
-inner_ooi_crse.to_netcdf(
-    DATA_DIR / "ship/ea_ship_data/CE01ISSP_bottle_samples.nc",
-)
-
-# %%
 ooi_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
     profiler=inner_nitrate,
     ship=inner_ooi_crse,
@@ -194,89 +134,6 @@ plt.plot(
     prof_overlapping_bottles.isel(time=2).nitrate,
     -prof_overlapping_bottles.isel(time=2).temperature,
     "X",
-)
-
-# %%
-# ctd data from NH, nhl_crse_ctd = nh line cruise ctd data
-inner_nhl_crse_ctd = xr.open_dataset(
-    DATA_DIR / "NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
-)
-# fix some xr stuff, assign coords, remove unnecessary dims, etc
-inner_nhl_crse_ctd = inner_nhl_crse_ctd.assign_coords(
-    date=inner_nhl_crse_ctd["time"].astype("datetime64[D]"),
-)
-inner_nhl_crse_ctd = inner_nhl_crse_ctd.swap_dims({"time": "date"})
-inner_nhl_crse_ctd["longitude"] = inner_nhl_crse_ctd["longitude"] - 360
-inner_nhl_crse_ctd = inner_nhl_crse_ctd.squeeze()
-
-# nitrate data from NH line cruises, nhl_crse_nit = nh line cruise nitrate data
-inner_nhl_crse_nit = pd.read_csv(DATA_DIR / "ship/Nutrients_4_Andrew_all_NCC.csv")
-
-# bin the bottle sample data by date and pressure
-nh_pressure_grid = inner_nhl_crse_ctd["pressure"]
-nh_time_grid = inner_nhl_crse_ctd["date"]
-inner_nhl_crse_nit["Sample Date"] = pd.to_datetime(
-    inner_nhl_crse_nit["Sample Date"].to_numpy(),
-    unit="ns",
-)
-
-nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = [], [], [], [], []
-for _i, t in enumerate(inner_nhl_crse_ctd["date"].to_numpy()):
-    # find places where nitrate data lines up with ctd data
-    # need exact date matches - don't want nearest neighbor for this step
-    time_mask = np.where(inner_nhl_crse_nit["Sample Date"] == t)
-    for n, d, s, p, lon in zip(
-        inner_nhl_crse_nit["no3"].to_numpy()[time_mask],
-        inner_nhl_crse_nit["Sample Date"].to_numpy()[time_mask],
-        inner_nhl_crse_nit["Station"].to_numpy()[time_mask],
-        inner_nhl_crse_nit["pressure"].to_numpy()[time_mask],
-        inner_nhl_crse_nit["Longitude"].to_numpy()[time_mask],
-        strict=False,
-    ):
-        nitr_tbin.append(n)
-        pres_tbin.append(p)
-        time_tbin.append(d)
-        long_tbin.append(lon)
-        stat_tbin.append(s)
-
-# make numpy arrays
-nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = (
-    np.array(nitr_tbin),
-    np.array(pres_tbin),
-    np.array(time_tbin),
-    np.array(long_tbin),
-    np.array(stat_tbin),
-)
-
-# make dataarrays for vectorized indexing, doesn't work with np arrays for some reason
-pres_targ = xr.DataArray(pres_tbin, dims="date")
-time_targ = xr.DataArray(time_tbin, dims="date")
-long_targ = xr.DataArray(long_tbin, dims="date")
-
-# bin the ctd data using the arrays from the bottle sample binning, using nearest binning method
-# e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
-inner_nhl_crse = inner_nhl_crse_ctd.sel(
-    date=time_targ,
-    pressure=pres_targ,
-    longitude=long_targ,
-    method="nearest",
-)
-
-# add nitrate and station
-inner_nhl_crse["nitrate"] = (("date"), nitr_tbin)
-inner_nhl_crse["station"] = (("date"), stat_tbin)
-
-# view created xarray
-inner_nhl_crse = inner_nhl_crse.where(
-    (inner_nhl_crse.station == "NH01") | (inner_nhl_crse.station == "NH03"),
-    drop=True,
-)
-inner_nhl_crse = inner_nhl_crse.swap_dims({"date": "time"})
-
-
-# save bottle samples data
-inner_nhl_crse.to_netcdf(
-    DATA_DIR / "NHL_Gridded/NH01_NH03_bottle_samples.nc",
 )
 
 # %%
@@ -311,73 +168,15 @@ for i in range(len(nhl_overlapping_bottles.time)):
 # ## Mid Shelf Nitrate Bottle Sample Comparison
 
 # %%
-# loading ooi cruise data df = ooi cruise data
-file_list = Path(DATA_DIR / "ship/ea_ship_data/").glob("*.csv")
-df_list = []
-col_names = [
-    "Station",
-    "Start Time [UTC]",
-    "Start Latitude [degrees]",
-    "Start Longitude [degrees]",
-    "CTD Pressure [db]",
-    "CTD Salinity 1 [psu]",
-    "CTD Salinity 2 [psu]",
-    "CTD Temperature 1 [deg C]",
-    "CTD Temperature 2 [deg C]",
-    "Discrete Nitrate [uM]",
-]
-for f in file_list:
-    df_temp = pd.read_csv(DATA_DIR / "ship/ea_ship_data/" / f, usecols=col_names)
-    rows = df_temp.loc[df_temp["Station"] == "CE02"]
-    df_list.append(rows)
-
-mid_shelf_ooi_crse = pd.concat(df_list)
-mid_shelf_ooi_crse = mid_shelf_ooi_crse.rename(
-    columns={
-        "Start Time [UTC]": "time",
-        "Start Latitude [degrees]": "lat",
-        "Start Longitude [degrees]": "lon",
-        "CTD Pressure [db]": "pressure",
-        "CTD Salinity 1 [psu]": "sal1",
-        "CTD Salinity 2 [psu]": "sal2",
-        "CTD Temperature 1 [deg C]": "temp1",
-        "CTD Temperature 2 [deg C]": "temp2",
-        "Discrete Nitrate [uM]": "nitrate",
-    },
-)
-mid_shelf_ooi_crse["time"] = pd.to_datetime(mid_shelf_ooi_crse["time"])
-# ooi_cruse = mid_shelf_ooi_crse.set_index(["time", "pressure"])
-mid_shelf_ooi_crse = mid_shelf_ooi_crse.iloc[
-    np.unique(
-        mid_shelf_ooi_crse.set_index(["time", "pressure"]).index,
-        return_index=True,
-    )[1]
-]
-mid_shelf_ooi_crse = mid_shelf_ooi_crse.set_index(["time", "pressure"])
-mid_shelf_ooi_crse = mid_shelf_ooi_crse.to_xarray()
-mid_shelf_ooi_crse["time"] = pd.DatetimeIndex(mid_shelf_ooi_crse["time"].values)
-mid_shelf_ooi_crse = mid_shelf_ooi_crse.where(
-    mid_shelf_ooi_crse.nitrate > -100,
-    drop=True,
-)
-mid_shelf_ooi_crse["pot_density_anom"] = gsw.density.sigma0(
-    mid_shelf_ooi_crse["sal1"],
-    gsw.conversions.CT_from_t(
-        mid_shelf_ooi_crse["sal1"],
-        mid_shelf_ooi_crse["temp1"],
-        mid_shelf_ooi_crse["pressure"],
-    ),
-)
-
-# save bottle samples data
-mid_shelf_ooi_crse.to_netcdf(
-    DATA_DIR / "ship/ea_ship_data/CE02SHSP_bottle_samples.nc",
+ooi_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
+    profiler=midshelf_nitrate,
+    ship=midshelf_ooi_crse,
 )
 
 # %%
-ooi_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
+nhl_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
     profiler=midshelf_nitrate,
-    ship=mid_shelf_ooi_crse,
+    ship=midshelf_nhl_crse,
 )
 
 # %%
@@ -414,88 +213,9 @@ for i in range(len(ooi_overlapping_bottles.time)):
     temp = ooi_overlapping_bottles.isel(time=i).time
 
 # %%
-# ctd data from NH, nhl_crse_ctd = nh line cruise ctd data
-mid_nhl_crse_ctd = xr.open_dataset(
-    DATA_DIR / "NHL_Gridded/newport_hydrographic_line_gridded_sections.nc",
-)
-# fix some xr stuff, assign coords, remove unnecessary dims, etc
-mid_nhl_crse_ctd = mid_nhl_crse_ctd.assign_coords(
-    date=mid_nhl_crse_ctd["time"].astype("datetime64[D]"),
-)
-mid_nhl_crse_ctd = mid_nhl_crse_ctd.swap_dims({"time": "date"})
-mid_nhl_crse_ctd["longitude"] = mid_nhl_crse_ctd["longitude"] - 360
-mid_nhl_crse_ctd = mid_nhl_crse_ctd.squeeze()
-
-# nitrate data from NH line cruises, nhl_crse_nit = nh line cruise nitrate data
-mid_nhl_crse_nit = pd.read_csv(DATA_DIR / "ship/Nutrients_4_Andrew_all_NCC.csv")
-
-# bin the bottle sample data by date and pressure
-nh_pressure_grid = mid_nhl_crse_ctd["pressure"]
-nh_time_grid = mid_nhl_crse_ctd["date"]
-mid_nhl_crse_nit["Sample Date"] = pd.to_datetime(
-    mid_nhl_crse_nit["Sample Date"].to_numpy(),
-    unit="ns",
-)
-
-nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = [], [], [], [], []
-for _i, t in enumerate(mid_nhl_crse_ctd["date"].to_numpy()):
-    # find places where nitrate data lines up with ctd data
-    # need exact date matches - don't want nearest neighbor for this step
-    time_mask = np.where(mid_nhl_crse_nit["Sample Date"] == t)
-    for n, d, s, p, lon in zip(
-        mid_nhl_crse_nit["no3"].to_numpy()[time_mask],
-        mid_nhl_crse_nit["Sample Date"].to_numpy()[time_mask],
-        mid_nhl_crse_nit["Station"].to_numpy()[time_mask],
-        mid_nhl_crse_nit["pressure"].to_numpy()[time_mask],
-        mid_nhl_crse_nit["Longitude"].to_numpy()[time_mask],
-        strict=False,
-    ):
-        nitr_tbin.append(n)
-        pres_tbin.append(p)
-        time_tbin.append(d)
-        long_tbin.append(lon)
-        stat_tbin.append(s)
-
-# make numpy arrays
-nitr_tbin, pres_tbin, time_tbin, long_tbin, stat_tbin = (
-    np.array(nitr_tbin),
-    np.array(pres_tbin),
-    np.array(time_tbin),
-    np.array(long_tbin),
-    np.array(stat_tbin),
-)
-
-# make dataarrays for vectorized indexing, doesn't work with np arrays for some reason
-pres_targ = xr.DataArray(pres_tbin, dims="date")
-time_targ = xr.DataArray(time_tbin, dims="date")
-long_targ = xr.DataArray(long_tbin, dims="date")
-
-# bin the ctd data using the arrays from the bottle sample binning, using nearest binning method
-# e.g., if pressure=0 from bottle, then pressure=1 from ship since this is closest.
-mid_nhl_crse = mid_nhl_crse_ctd.sel(
-    date=time_targ,
-    pressure=pres_targ,
-    longitude=long_targ,
-    method="nearest",
-)
-
-# add nitrate and station
-mid_nhl_crse["nitrate"] = (("date"), nitr_tbin)
-mid_nhl_crse["station"] = (("date"), stat_tbin)
-
-# view created xarray
-mid_nhl_crse = mid_nhl_crse.where(mid_nhl_crse.station == "NH10", drop=True)
-mid_nhl_crse = mid_nhl_crse.swap_dims({"date": "time"})
-
-# save bottle sample data
-mid_nhl_crse.to_netcdf(
-    DATA_DIR / "NHL_Gridded/NH10_bottle_samples.nc",
-)
-
-# %%
 nhl_overlapping_bottles, prof_overlapping_bottles = get_overlapping_bottles(
     profiler=midshelf_nitrate,
-    ship=mid_nhl_crse,
+    ship=midshelf_nhl_crse,
 )
 
 # %% [markdown]
@@ -549,15 +269,15 @@ ax1.plot(
     rasterized=True,
 )
 ax1.plot(
-    mid_nhl_crse["potential_density"],
-    mid_nhl_crse["nitrate"],
+    midshelf_nhl_crse["potential_density"],
+    midshelf_nhl_crse["nitrate"],
     "o",
     color="#DDAA33",
     label="NHL",
 )
 ax1.plot(
-    mid_shelf_ooi_crse["pot_density_anom"],
-    mid_shelf_ooi_crse["nitrate"],
+    midshelf_ooi_crse["pot_density_anom"],
+    midshelf_ooi_crse["nitrate"],
     "X",
     color="#BB5566",
     label="OOI",
@@ -605,6 +325,46 @@ plt.savefig(
     bbox_inches="tight",
     dpi=600,
 )
+
+# %% [markdown]
+# ## Nitrate density relationship colored by spiciness
+#
+# Minor side quest to see if deviations from mean nitrate-density relationship are related to spiciness
+
+# %%
+import gsw
+
+# %%
+fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(8, 4), sharey=True)
+# ax0.plot(midshelf_nitrate.density, midshelf_nitrate.nitrate ,'.', color='#004488', label='Profiler', rasterized=True)
+# ax0.plot(nhl_crse.potential_density, nhl_crse.nitrate, 'o', color='#DDAA33', label='NHL')
+ax0.scatter(
+    inner_nitrate["density"],
+    inner_nitrate["nitrate"],
+    c=gsw.spiciness0(inner_nitrate["absolute_salinity"], inner_nitrate["conservative_temperature"]),
+    label="Profiler",
+    alpha=0.7,
+    vmin=-4,
+    vmax=4,
+    cmap=cmo.balance,
+)
+sca = ax1.scatter(
+    midshelf_nitrate["density"],
+    midshelf_nitrate["nitrate"],
+    c=gsw.spiciness0(midshelf_nitrate["absolute_salinity"], midshelf_nitrate["conservative_temperature"]),
+    label="Profiler",
+    alpha=0.7,
+    vmin=-4,
+    vmax=4,
+    cmap=cmo.balance,
+)
+plt.colorbar(sca, label="Spiciness ($\\mathsf{kg \\; m^{-3}}$)", ax=[ax0, ax1], orientation="vertical", pad=0.05)
+fig.supxlabel("Potential Density Anomaly ($\\mathsf{kg \\; m^{-3}}$)", y=-0.02)
+fig.supylabel("Nitrate Conc. ($\\mathsf{mmol \\; m^{-3}}$)", x=0.02)
+
+
+# %% [markdown]
+# It does seem like the
 
 # %% [markdown]
 # ## Density by Deployment Times
@@ -944,9 +704,7 @@ inner_nitrate_monthly = inner_nitrate_monthly.where(
 )
 
 # %%
-mid_shelf_ooi_crse_stacked = (
-    mid_shelf_ooi_crse["nitrate"].sel(time=mid_shelf_ooi_crse["time.month"] == 7).stack(z=[...])  # noqa: PD013
-)
+midshelf_ooi_crse_stacked = midshelf_ooi_crse["nitrate"].sel(time=midshelf_ooi_crse["time.month"] == 7).stack(z=[...])
 
 
 # %%
@@ -954,7 +712,7 @@ fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(8, 6))
 
 for i, m in enumerate(range(4, 10)):
     monthly_data = midshelf_nitrate_monthly.sel(month=m)
-    monthly_ooi_crse_data = mid_shelf_ooi_crse["nitrate"].sel(time=mid_shelf_ooi_crse["time.month"] == m).stack(z=[...])  # noqa: PD013
+    monthly_ooi_crse_data = midshelf_ooi_crse["nitrate"].sel(time=midshelf_ooi_crse["time.month"] == m).stack(z=[...])
     ax = cast("plt.Axes", axs.flatten()[i])
     ax.plot(
         monthly_data["mean"],
@@ -962,8 +720,8 @@ for i, m in enumerate(range(4, 10)):
         color=colors[i],
     )
     ax.scatter(
-        mid_nhl_crse.sel(time=mid_nhl_crse["time.month"] == m)["nitrate"],
-        -mid_nhl_crse.sel(time=mid_nhl_crse["time.month"] == m)["pressure"],
+        midshelf_nhl_crse.sel(time=midshelf_nhl_crse["time.month"] == m)["nitrate"],
+        -midshelf_nhl_crse.sel(time=midshelf_nhl_crse["time.month"] == m)["pressure"],
         edgecolors=colors[i],
         facecolors="white",
         linewidths=3,
@@ -1012,52 +770,4 @@ plt.savefig(
     format=FIG_SAVE_FMT,
     bbox_inches="tight",
     dpi=1200,
-)
-
-# %%
-MINIMUM_N_STAR = 5
-velocity_monthly = xr.Dataset(
-    {
-        "mean": velocity.groupby("time.month").mean(dim="time", skipna=True)["u_proj"],
-        "std": velocity.groupby("time.month").std(dim="time", skipna=True)["u_proj"],
-        "count": velocity.groupby("time.month").count(dim="time")["u_proj"],
-    },
-)
-velocity_monthly["ci"] = velocity_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
-velocity_monthly = velocity_monthly.where(
-    velocity_monthly["count"] / 7 >= MINIMUM_N_STAR,  # N* at least ~5
-)
-
-fig, ax = plt.subplots(sharex=True, sharey=True, figsize=(4, 6))
-
-for i, m in enumerate(range(4, 10)):
-    monthly_data = velocity_monthly.isel(month=m)
-    # print(monthly_data)
-    ax.plot(
-        monthly_data["mean"],
-        -monthly_data["depth"].astype(float),
-        color=colors[i],
-        label=f"{calendar.month_abbr[m]}\nN*$\\approx${np.ceil(monthly_data['count'].mean().item() / 7):.0f}",
-    )
-    # ax.fill_betweenx(
-    #     -monthly_data["depth"].astype(float),
-    #     monthly_data["mean"] - monthly_data["ci"],
-    #     monthly_data["mean"] + monthly_data["ci"],
-    #     ls="None",
-    #     edgecolor="None",
-    #     facecolor=colors[i],
-    #     alpha=0.5,
-    # )
-
-    # ax.set_xlim(0, 40)
-    ax.set_ylim(-80, 0)
-    ax.minorticks_off()
-ax.axvline(0, color="k", ls="--")
-ax.legend()
-fig.supxlabel("Velocity [$\\mathsf{m \\; s^{-1}}$]", y=0.03)
-fig.supylabel("z [$\\mathsf{{m}}$]", x=-0.03)
-plt.savefig(
-    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/monthly_velocity.{FIG_SAVE_FMT}",
-    format=FIG_SAVE_FMT,
-    bbox_inches="tight",
 )

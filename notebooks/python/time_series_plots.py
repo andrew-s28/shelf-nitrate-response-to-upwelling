@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: nitrate-upwelling
+#     display_name: nitrate-upwelling (3.12.9)
 #     language: python
 #     name: python3
 # ---
@@ -26,7 +26,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from matplotlib import cm
-from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
 from scipy.stats import distributions
 from tqdm import tqdm
@@ -39,134 +38,28 @@ NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
-OPTAA_PATH = DATA_DIR / "CE01ISSM/ce01issm_optaa_processed.nc"
-FLORT_PATH = DATA_DIR / "CE01ISSM/ce01issm_flort_processed.nc"
+VEL_PATH = DATA_DIR / "NH10_ADCP_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
+CHL_PATH = DATA_DIR / "CE01ISSM/CE01ISSM_chlorophyll_2014-04-17_2025-09-22.nc"
 
-VELOCITY_VARIABLE = "cs"
+VELOCITY_VARIABLE = "cs_proj"
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
 velocity = xr.open_dataset(VEL_PATH)
-optaa = xr.open_dataset(OPTAA_PATH)
-flort = xr.open_dataset(FLORT_PATH)
+inner_shelf_chlorophyll = xr.open_dataset(CHL_PATH)
+inner_shelf_chlorophyll = inner_shelf_chlorophyll.sortby("time").resample(time="1D").mean()
 
-# align optaa and flort datasets and average estimated chlorophyll
-flort = flort.drop_dims("stats")
-optaa_al, flort_al = xr.align(optaa.drop_duplicates("time"), flort.drop_duplicates("time"))
-
-inner_shelf_chlorophyll = xr.Dataset(
-    {
-        "estimated_chlorophyll_flort": flort_al["estimated_chlorophyll"],
-        "estimated_chlorophyll_optaa": optaa_al["estimated_chlorophyll"],
-    },
-)
-inner_shelf_chlorophyll["estimated_chlorophyll"] = inner_shelf_chlorophyll.to_array(dim="new").mean(dim="new")
-inner_shelf_chlorophyll = inner_shelf_chlorophyll.resample(time="1D").mean()
 
 # %% [markdown]
 # ## Nitrate and Wind Time Series
-
-# %%
-YEAR = 2021
-INNER_SHELF_MAX_DEPTH = 21.5  # meters
-MAX_NITRATE_CONC = 38  # uM
-
-# single year time series
-# plt.
-fig, axs = plt.subplots(2, 1, figsize=(7, 4.5), sharex=True, layout="constrained")
-temp = wind.where(wind["time.year"] == YEAR, drop=True)
-(ln1,) = axs[0].plot(temp.time, temp.coare_y, label="Stress", lw=3, zorder=1.8)
-(ln2,) = axs[0].plot(temp.time, temp.w5d, color="#DDAA33", label="$W_{5d}$", lw=3, zorder=1.8)
-axs[0].axhline(0, ls="-", lw=2, color="black", zorder=1.5)
-axs[0].set_ylim(-0.25, 0.25)
-
-axs[0].set_xlim(np.datetime64("2021-04-01"), np.datetime64("2021-09-30"))
-axs[0].tick_params(axis="x", which="minor", bottom=False, top=False)
-
-deployment = np.arange(15, 20, 1)
-temp = inner_nitrate.where(inner_nitrate["time.year"] == YEAR, drop=True)
-
-cmap = cmo.tools.crop_by_percent(
-    cmo.deep,  # pyright: ignore[reportAttributeAccessIssue]
-    10,
-    which="min",
-    N=len(temp.depth.where(temp.depth < INNER_SHELF_MAX_DEPTH, drop=True)),
-)
-cdict = cmo.tools.get_dict(cmap, N=len(temp.depth.where(temp.depth < INNER_SHELF_MAX_DEPTH, drop=True)))
-deep = LinearSegmentedColormap("cmap", cdict)
-
-for i, d in enumerate(temp.depth):
-    for dep in deployment:
-        temp_dep = temp.where(temp.deployment == dep).where(temp.nitrate < MAX_NITRATE_CONC)
-        if (len(temp_dep.time) > 0) & (~np.all(np.isnan(temp.sel(depth=d).nitrate))):
-            axs[1].plot(
-                temp_dep.sel(depth=d).time,
-                temp_dep.sel(depth=d).nitrate,
-                color=deep((i + 1) / len(inner_nitrate.depth)),
-                lw=1.5,
-            )
-
-axs[1].tick_params(axis="x", which="major", bottom=True, top=True, pad=8)
-dformatter = mdates.DateFormatter("%b")
-axs[1].xaxis.set_major_formatter(dformatter)
-axs[0].set_ylabel("Wind stress [$\\mathsf{N \\; m^{-2}}$]", labelpad=0)
-
-axs[1].tick_params(axis="x", which="minor", bottom=False, top=False)
-axs[1].set_ylim(0, 40)
-axs[1].set_yticks([10, 20, 30, 40])
-axs[1].set_ylabel("Inshore Nitrate Conc. [$\\mathsf{\\mu M}$]", labelpad=0)
-fig.align_ylabels(axs)  # pyright: ignore[reportArgumentType]
-
-
-deep_r = cmo.tools.crop_by_percent(
-    cmo.deep_r,  # pyright: ignore[reportAttributeAccessIssue]
-    10,
-    which="max",
-    N=len(temp.depth.where(temp.depth < INNER_SHELF_MAX_DEPTH, drop=True)),  # pyright: ignore[reportAttributeAccessIssue]
-)
-cax = fig.add_axes(
-    rect=(
-        axs[1].get_position().x0 + 0.9,
-        axs[1].get_position().y0,
-        0.015,
-        axs[1].get_position().height,
-    ),
-)
-scm = plt.cm.ScalarMappable(cmap=deep_r, norm=plt.Normalize(vmin=-20, vmax=0))  # pyright: ignore[reportAttributeAccessIssue]
-cbar = fig.colorbar(scm, cax=cax, ax=axs, fraction=0.01, extend="min")
-cbar.ax.tick_params(labelsize=10, pad=5)
-cbar.ax.minorticks_off()
-cbar.set_label("Depth [m]", labelpad=10, rotation=270)
-
-axs[0].text(
-    0.02,
-    0.05,
-    "Upwelling\nFavorable",
-    bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
-    transform=axs[0].transAxes,
-    va="bottom",
-    ha="left",
-    zorder=2,
-)
-axs[0].text(
-    0.02,
-    0.95,
-    "Downwelling\nFavorable",
-    bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
-    transform=axs[0].transAxes,
-    va="top",
-    ha="left",
-    zorder=2,
-)
 
 
 # %%
@@ -335,8 +228,8 @@ def _plot_chlorophyll_time_series(
     chlorophyll = chlorophyll.where(chlorophyll["time.year"] == year, drop=True)
 
     ax.plot(
-        chlorophyll.time,
-        chlorophyll.estimated_chlorophyll,
+        chlorophyll["time"],
+        chlorophyll["chlorophyll_a"],
         linestyle="-",
         linewidth=2,
         color="#228833",
@@ -484,7 +377,7 @@ axs.set_xlim(4, 10)
 axs.set_ylim(0, 30)
 axs.minorticks_off()
 axs.legend(loc="lower right")
-axs.xaxis.set_major_formatter(lambda x, pos: calendar.month_abbr[int(x)])  # noqa: ARG005; `pos` is necessary but unused
+axs.xaxis.set_major_formatter(lambda x, pos: calendar.month_abbr[int(x)])  # noqa: ARG005
 axs.set_ylabel("Depth mean nitrate conc. [$\\mathsf{mmol \\; m^{-3}}$]")
 
 plt.savefig(

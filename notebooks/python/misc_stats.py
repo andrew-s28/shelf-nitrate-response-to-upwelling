@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.19.5
 #   kernelspec:
 #     display_name: nitrate-upwelling (3.12.9)
 #     language: python
@@ -30,36 +30,22 @@ NOTEBOOK_DIR = Path().resolve()
 DATA_DIR = NOTEBOOK_DIR / "../data"
 FIGURES_DIR = NOTEBOOK_DIR / "../figures"
 INNER_NITRATE_PATH = (
-    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
+    DATA_DIR / "CE01ISSP/CE01ISSP_nitrate_binned_qced_baseline_subtracted_2014-04-17_2025-07-26_with_dndt_resampled.nc"
 )
 MIDSHELF_NITRATE_PATH = (
-    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
+    DATA_DIR / "CE02SHSP/CE02SHSP_nitrate_binned_qced_baseline_subtracted_2015-03-18_2024-09-15_with_dndt_resampled.nc"
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
-VEL_PATH = DATA_DIR / "NH10_Mooring_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
-OPTAA_PATH = DATA_DIR / "CE01ISSM/ce01issm_optaa_processed.nc"
-FLORT_PATH = DATA_DIR / "CE01ISSM/ce01issm_flort_processed.nc"
+VEL_PATH = DATA_DIR / "NH10_ADCP_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
+CHL_PATH = DATA_DIR / "CE01ISSM/CE01ISSM_chlorophyll_2014-04-17_2025-09-22.nc"
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
 velocity = xr.open_dataset(VEL_PATH)
-optaa = xr.open_dataset(OPTAA_PATH)
-flort = xr.open_dataset(FLORT_PATH)
-
-# align optaa and flort datasets and average estimated chlorophyll
-flort = flort.drop_dims("stats")
-optaa_al, flort_al = xr.align(optaa.drop_duplicates("time"), flort.drop_duplicates("time"))
-
-inner_shelf_chlorophyll = xr.Dataset(
-    {
-        "estimated_chlorophyll_flort": flort_al["estimated_chlorophyll"],
-        "estimated_chlorophyll_optaa": optaa_al["estimated_chlorophyll"],
-    },
-)
-inner_shelf_chlorophyll["estimated_chlorophyll"] = inner_shelf_chlorophyll.to_array(dim="new").mean(dim="new")
-inner_shelf_chlorophyll = inner_shelf_chlorophyll.resample(time="1D").mean()
+chlorophyll = xr.open_dataset(CHL_PATH)
+chlorophyll = chlorophyll.sortby("time").resample(time="1D").mean()
 
 
 # %%
@@ -201,7 +187,7 @@ corr[np.argmax(np.abs(corr))]
 lags = np.arange(-30, 31)
 corr, confint, n = lagged_correlation(
     wind["coare_y"],
-    inner_shelf_chlorophyll["estimated_chlorophyll"],
+    chlorophyll["chlorophyll_a"],
     lags,
 )
 corr[np.argmax(np.abs(corr))]
@@ -216,7 +202,7 @@ monthly_variance = {
     "20_m_velocity": velocity["u_proj"].groupby("time.month").std("time").sel(depth=20),
     "inner_nitrate": inner_nitrate["nitrate"].groupby("time.month").std("time").mean("depth"),
     "midshelf_nitrate": midshelf_nitrate["nitrate"].groupby("time.month").std("time").mean("depth"),
-    "chlorophyll": inner_shelf_chlorophyll["estimated_chlorophyll"].groupby("time.month").std("time"),
+    "chlorophyll": chlorophyll["chlorophyll_a"].groupby("time.month").std("time"),
 }
 
 monthly_means = {
@@ -226,7 +212,7 @@ monthly_means = {
     "20_m_velocity": velocity["u_proj"].groupby("time.month").mean("time").sel(depth=20),
     "inner_nitrate": inner_nitrate["nitrate"].groupby("time.month").mean("time").mean("depth"),
     "midshelf_nitrate": midshelf_nitrate["nitrate"].groupby("time.month").mean("time").mean("depth"),
-    "chlorophyll": inner_shelf_chlorophyll["estimated_chlorophyll"].groupby("time.month").mean("time"),
+    "chlorophyll": chlorophyll["chlorophyll_a"].groupby("time.month").mean("time"),
 }
 
 plt.figure(figsize=(10, 6))
