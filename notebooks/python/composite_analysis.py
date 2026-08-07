@@ -62,13 +62,13 @@ velocity = velocity.interp(depth=midshelf_nitrate.depth)
 # ## Computing Composites Based on Wind Stress
 
 # %%
-WIND_MIN, WIND_MAX = -0.05, -0.03
+WIND_MIN, WIND_MAX = 0, 0
 days = np.arange(-5, 6)
 composite_wind_events = []
 for t1, t2 in pairwise(tqdm(wind["time"], desc="Finding Wind Stress Events")):
     wind_t1 = wind.sel({"time": t1})
     wind_t2 = wind.sel({"time": t2})
-    # find times when wind switches from above 0.03 to below -0.05
+    # find times when wind switches from above -0.03 to below -0.05
     if (wind_t2.coare_y < WIND_MIN) & (wind_t1.coare_y > WIND_MAX):
         wind_slice = wind.sel(time=slice(t2, t2 + np.timedelta64(5, "D")))
         # only include events that have upwelling favorable winds for at least 5 days after initial change
@@ -422,7 +422,7 @@ fig.suptitle("Along-shelf velocity")
 # %%
 fig, axs = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True, figsize=(5, 3))
 composite_vel_monthly_as_slice = composite_vel_monthly_as.sel(
-    time=slice(-5, 5, 5),
+    time=slice(-2, 2, 2),
     month=slice(4, 9),
 )
 
@@ -612,6 +612,121 @@ fig.supxlabel(
 fig.supylabel("z [$\\mathsf{{m}}$]", x=0.02)
 plt.savefig(
     FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_cs_nflux.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+)
+
+# %% [markdown]
+# Combined cross shelf velocity and nitrate flux figures
+
+# %%
+# fig, (axs_top, axs_bot) = plt.subplots(nrows=2, ncols=3, sharex=True, sharey=True, figsize=(6, 3))
+fig = plt.figure(figsize=(6, 6))
+subfigs = fig.subfigures(nrows=2, ncols=1, hspace=0.05)
+axs_top = subfigs[0].subplots(nrows=1, ncols=3, sharex=True, sharey=True)
+axs_bot = subfigs[1].subplots(nrows=1, ncols=3, sharex=True, sharey=True)
+subfigs[0].supxlabel("Cross-shelf velocity [$\\mathsf{cm \\; s^{-1}}$]", y=-0.12, fontsize=12)
+subfigs[1].supxlabel("Cross-shelf nitrate flux [$\\mathsf{mmol \\; m^{-2} \\; s^{-1}}$]", y=-0.12, fontsize=12)
+subfigs[0].supylabel("z [$\\mathsf{{m}}$]", x=0.02, fontsize=12)
+subfigs[1].supylabel("z [$\\mathsf{{m}}$]", x=0.02, fontsize=12)
+
+composite_vel_monthly_cs_slice = composite_vel_monthly_cs.sel(
+    time=slice(-2, 2, 2),
+    month=slice(4, 9),
+)
+
+
+for i, t in enumerate(composite_vel_monthly_cs_slice["time"]):
+    for j, m in enumerate(composite_vel_monthly_cs_slice.sel(time=t)["month"]):
+        data = composite_vel_monthly_cs_slice.sel(time=t, month=m)
+        axs_top[i].axvline(0, color="gray", lw=1.5)
+        axs_top[i].plot(
+            data["mean"] * 100,  # convert to cm/s
+            -data["depth"],
+            label=calendar.month_abbr[m.values],
+            c=colors[j],
+            ls=linestyles[j],
+        )
+        axs_top[i].minorticks_off()
+        axs_top[i].set_ylim([-80, 0])
+        axs_top[i].set_xlim([-5, 5])
+        axs_top[i].text(
+            0.02,
+            -0.12,
+            "$\\leftarrow$Offshore",
+            bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
+            transform=axs_top[i].transAxes,
+            va="top",
+            ha="left",
+            fontsize=8,
+        )
+        axs_top[i].text(
+            0.98,
+            -0.12,
+            "Onshore$\\rightarrow$",
+            bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
+            transform=axs_top[i].transAxes,
+            va="top",
+            ha="right",
+            fontsize=8,
+        )
+        if i == 0:
+            print(
+                f"Number of events in month {calendar.month_abbr[m.values]}: {data['count'].mean().values:.0f}",
+            )
+
+
+for i, v in enumerate(composite_midshelf_nitrate_flux_monthly_slice["time"]):
+    for j, m in enumerate(
+        composite_midshelf_nitrate_flux_monthly_slice.sel(time=v)["month"],
+    ):
+        data = composite_midshelf_nitrate_flux_monthly_slice.sel(time=v, month=m)
+        axs_bot[i].axvline(0, color="black", lw=1.5, ls="-", alpha=0.7)
+        axs_bot[i].plot(
+            data["mean"],
+            -data["depth"],
+            label=calendar.month_abbr[m.values],
+            c=colors[j],
+            ls=linestyles[j],
+        )
+        axs_bot[i].minorticks_off()
+        axs_bot[i].set_ylim([-80, 0])
+        axs_bot[i].set_xlim([-1.5, 1.5])
+        axs_bot[i].text(
+            0.02,
+            -0.12,
+            "$\\leftarrow$Offshore",
+            bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
+            transform=axs_bot[i].transAxes,
+            va="top",
+            ha="left",
+            fontsize=8,
+        )
+        axs_bot[i].text(
+            0.98,
+            -0.12,
+            "Onshore$\\rightarrow$",
+            bbox={"facecolor": "white", "alpha": 1, "edgecolor": "white", "boxstyle": "round,pad=0."},
+            transform=axs_bot[i].transAxes,
+            va="top",
+            ha="right",
+            fontsize=8,
+        )
+
+bbox_props = {"facecolor": "white", "alpha": 0, "edgecolor": "white", "boxstyle": "round,pad=0."}
+axs_top[0].annotate("(a)\n-2 days", xy=(0.05, 0.02), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+axs_top[1].annotate("(b)\n0 days", xy=(0.05, 0.02), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+axs_top[2].annotate("(c)\n+2 days", xy=(0.05, 0.02), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+axs_bot[0].annotate("(d)\n-2 days", xy=(0.05, 0.02), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+axs_bot[1].annotate("(e)\n0 days", xy=(0.05, 0.02), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+axs_bot[2].annotate("(f)\n+2 days", xy=(0.05, 0.02), xycoords="axes fraction", fontsize=10, bbox=bbox_props)
+
+
+handles, labels = axs_top[0].get_legend_handles_labels()
+fig.legend(handles, labels, loc="center", ncols=6, bbox_to_anchor=(0.5, -0.1))
+
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_cs_velocity_cs_nflux.{FIG_SAVE_FMT}",
     format=FIG_SAVE_FMT,
     bbox_inches="tight",
 )

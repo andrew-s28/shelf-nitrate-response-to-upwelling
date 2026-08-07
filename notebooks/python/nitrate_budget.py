@@ -14,6 +14,7 @@
 # ---
 
 # %%
+from itertools import pairwise
 from pathlib import Path
 
 import matplotlib.dates as mdates
@@ -23,6 +24,7 @@ import statsmodels.api as sm
 import xarray as xr
 from numpy.typing import NDArray
 from scipy.stats import distributions
+from tqdm import tqdm
 
 # %%
 FIG_SAVE_FMT = "png"
@@ -39,6 +41,7 @@ MIDSHELF_NITRATE_PATH = (
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 VEL_PATH = DATA_DIR / "NH10_ADCP_Data/nh10_hourly_data_1997_2024_rotated_filtered_streamwise_v5.2.nc"
+CHL_PATH = DATA_DIR / "CE01ISSM/CE01ISSM_chlorophyll_2014-04-17_2025-09-22.nc"
 GEBCO_PATH = list(Path(DATA_DIR / "GEBCO/").glob("*.nc"))
 
 VELOCITY_VARIABLE = (
@@ -132,6 +135,7 @@ inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
 midshelf_nitrate = xr.open_dataset(MIDSHELF_NITRATE_PATH)
 wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
 velocity = xr.open_dataset(VEL_PATH).resample(time="1D").mean()
+chlorophyll = xr.open_dataset(CHL_PATH).resample(time="1D").mean()
 
 # calculate monthly means for midshelf nitrate
 midshelf_nitrate_monthly = xr.Dataset(
@@ -142,9 +146,6 @@ midshelf_nitrate_monthly = xr.Dataset(
     },
 )
 midshelf_nitrate_monthly["ci"] = midshelf_nitrate_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
-
-# %%
-midshelf_nitrate
 
 # %% [markdown]
 # ## "Normal" Cross-shelf Advective Flux Divergence Calculation
@@ -459,7 +460,7 @@ axs[1].axhline(0, ls="--", color="black")
 axs[1].plot(
     midshelf_nitrate_flux["time"],
     midshelf_nitrate_flux,
-    label="Actual nitrate",
+    label="Daily-mean nitrate",
     color="#004488",
     linewidth=2,
     zorder=10,
@@ -467,7 +468,7 @@ axs[1].plot(
 axs[1].plot(
     midshelf_nitrate_monthly_flux["time"],
     midshelf_nitrate_monthly_flux,
-    label="Monthly mean nitrate",
+    label="Monthly-mean nitrate",
     color="#DDAA33",
     linewidth=1,
 )
@@ -504,7 +505,7 @@ monthly_flux_al_nitr, inner_al_monthly_flux, mid_al_monthly_flux = xr.align(
 axs[3].plot(
     monthly_flux_al_nitr["time"],
     (monthly_flux_al_nitr - inner_al_monthly_flux - mid_al_monthly_flux),
-    label="Actual Nitrate",
+    label="Daily-mean nitrate",
     color="#004488",
     linewidth=2,
     zorder=3,
@@ -517,7 +518,7 @@ flux_al_nitr, inner_al_flux, mid_al_flux = xr.align(
 axs[3].plot(
     flux_al_nitr["time"],
     (flux_al_nitr - inner_al_flux - mid_al_flux),
-    label="Monthly mean nitrate",
+    label="Monthly-mean nitrate",
     color="#DDAA33",
     linewidth=1,
 )
@@ -543,15 +544,299 @@ plt.savefig(
     dpi=600,
 )
 
+# %% [markdown]
+# Composite budget terms based on upwelling favorable wind stress events
+
 # %%
-midshelf_nitrate["dndt_volume_integrated"].mean(dim="time")
+WIND_MIN, WIND_MAX = 0, 0
+days = np.arange(-5, 6)
+composite_wind_events = []
+for t1, t2 in pairwise(tqdm(wind["time"], desc="Finding Wind Stress Events")):
+    wind_t1 = wind.sel({"time": t1})
+    wind_t2 = wind.sel({"time": t2})
+    # find times when wind switches from above -0.03 to below -0.05
+    if (wind_t2.coare_y < WIND_MIN) & (wind_t1.coare_y > WIND_MAX):
+        wind_slice = wind.sel(time=slice(t2, t2 + np.timedelta64(5, "D")))
+        # only include events that have upwelling favorable winds for at least 5 days after initial change
+        if np.all(wind_slice.coare_y < 0):
+            composite_wind_events.append(
+                wind.sel(
+                    time=slice(t2 - np.timedelta64(5, "D"), t2 + np.timedelta64(5, "D")),
+                ),
+            )
+            # drop unnecessary variables
+            composite_wind_events[-1] = composite_wind_events[-1].drop_vars(
+                ["dominant_wpd", "average_wpd"],
+            )
+
+# %%
+flux_al_nitr, inner_al_flux, mid_al_flux = xr.align(
+    # have to make sure nan values are removed when aligning, otherwise composites will have different number of events for each variable
+    midshelf_nitrate_flux.dropna(dim="time"),
+    inner_nitrate["dndt_volume_integrated"].dropna(dim="time"),
+    midshelf_nitrate["dndt_volume_integrated"].dropna(dim="time"),
+)
+
+monthly_residual = monthly_flux_al_nitr - inner_al_monthly_flux - mid_al_monthly_flux
+monthly_residual = monthly_residual.to_dataset(name="residual")
+composite_residual_events = [
+    monthly_residual.where(monthly_residual["time"].isin(cw["time"]), drop=True) for cw in composite_wind_events
+]
+
+composite_chlorophyll_events = [
+    chlorophyll.where(chlorophyll["time"].isin(cw["time"]), drop=True) for cw in composite_wind_events
+]
+
+# %%
+daily_residual = flux_al_nitr - inner_al_flux - mid_al_flux
+composite_residual_events_daily = [
+    daily_residual.to_dataset(name="residual").where(daily_residual["time"].isin(cw["time"]), drop=True)
+    for cw in composite_wind_events
+]
+composite_nitrate_flux_events_daily = [
+    flux_al_nitr.to_dataset(name="cross_shelf_flux").where(flux_al_nitr["time"].isin(cw["time"]), drop=True)
+    for cw in composite_wind_events
+]
+composite_inner_nitrate_events_daily = [
+    inner_al_flux.to_dataset(name="inner_dndt").where(inner_al_flux["time"].isin(cw["time"]), drop=True)
+    for cw in composite_wind_events
+]
+composite_mid_nitrate_events_daily = [
+    mid_al_flux.to_dataset(name="mid_dndt").where(mid_al_flux["time"].isin(cw["time"]), drop=True)
+    for cw in composite_wind_events
+]
 
 
 # %%
-inner_nitrate["dndt_volume_integrated"].mean(dim="time")
+from enum import Enum, auto
+
+
+class CompositeType(Enum):
+    """Enum for composite type, either monthly or daily."""
+
+    MONTHLY = auto()
+    ANNUAL = auto()
+
+
+def composite(
+    events: list[xr.Dataset],
+    var: str,
+    composite_days: np.ndarray,
+    composite_type: CompositeType = CompositeType.ANNUAL,
+) -> xr.Dataset:
+    """Take a list of events and compute monthly or annual composites.
+
+    Events are a list of datasets, each of which contains one event, over a event length defined by composite_days.
+
+    Args:
+        events (list[xr.Dataset | xr.DataArray]): list of datasets or data arrays containing each event to composite
+        var (str): variable to composite
+        composite_days (np.ndarray): composite days, typically a range of days around an event (e.g., -5 to 5)
+        composite_type (CompositeType): compute annual or monthly composite,
+            either CompositeType.MONTHLY or CompositeType.ANNUAL, defaults to CompositeType.ANNUAL
+
+    Returns:
+        ds (xr.Dataset): dataset containing mean, std, count, and confidence interval for composite
+
+    """
+    composite_length = composite_days.size
+    ds_list = np.empty(composite_length, dtype=xr.Dataset)
+    # for each day in the composite length, combine each event to get the mean, std, and number of data points (count)
+    for i in range(composite_length):
+        composite_data = [d.isel(time=i) for d in events if len(d["time"]) == composite_length]
+        composite_data = xr.concat(composite_data, dim="time")
+        if composite_type == CompositeType.MONTHLY:
+            composite_mean = composite_data.groupby("time.month").mean(
+                dim="time",
+                skipna=True,
+            )[var]
+            composite_std = composite_data.groupby("time.month").std(
+                dim="time",
+                skipna=True,
+            )[var]
+            composite_count = composite_data.groupby("time.month").count(dim="time")[var]
+            ds_list[i] = xr.Dataset(
+                {
+                    "mean": composite_mean,
+                    "std": composite_std,
+                    "count": composite_count,
+                },
+                coords={"time": composite_days[i]},
+            )
+        else:
+            composite_mean = composite_data.mean(dim="time", skipna=True)[var]
+            composite_std = composite_data.std(dim="time", skipna=True)[var]
+            composite_count = composite_data.count(dim="time")[var]
+            ds_list[i] = xr.Dataset(
+                {
+                    "mean": composite_mean,
+                    "std": composite_std,
+                    "count": composite_count,
+                },
+            )
+    ds = xr.concat(ds_list, dim="time")
+    ds["ci"] = ds["std"] / np.sqrt(ds["count"]) * distributions.t(ds["count"] - 1).isf(0.025)
+    return ds
+
 
 # %%
-midshelf_nitrate_monthly_flux.mean(dim="time")
+composite_residual = composite(
+    composite_residual_events,
+    var="residual",
+    composite_days=days,
+    composite_type=CompositeType.ANNUAL,
+)
+
+composite_chlorophyll = composite(
+    composite_chlorophyll_events,
+    var="chlorophyll_a",
+    composite_days=days,
+    composite_type=CompositeType.ANNUAL,
+)
+
+composite_residual_daily = composite(
+    composite_residual_events_daily,
+    var="residual",
+    composite_days=days,
+    composite_type=CompositeType.ANNUAL,
+)
+composite_nitrate_flux_daily = composite(
+    composite_nitrate_flux_events_daily,
+    var="cross_shelf_flux",
+    composite_days=days,
+    composite_type=CompositeType.ANNUAL,
+)
+
+composite_inner_nitrate_daily = composite(
+    composite_inner_nitrate_events_daily,
+    var="inner_dndt",
+    composite_days=days,
+    composite_type=CompositeType.ANNUAL,
+)
+
+composite_mid_nitrate_daily = composite(
+    composite_mid_nitrate_events_daily,
+    var="mid_dndt",
+    composite_days=days,
+    composite_type=CompositeType.ANNUAL,
+)
 
 # %%
-(monthly_flux_al_nitr - inner_al_monthly_flux - mid_al_monthly_flux).mean()
+fig, ax = plt.subplots(figsize=(8, 4))
+
+ax.axhline(0, color="k", ls="--", lw=1)
+
+ax.plot(days, composite_residual_daily["mean"], color="k", lw=2, label="Residual")
+ax.fill_between(
+    days,
+    composite_residual_daily["mean"] + composite_residual_daily["ci"],
+    composite_residual_daily["mean"] - composite_residual_daily["ci"],
+    color="gray",
+    alpha=0.5,
+)
+ax.plot(days, composite_nitrate_flux_daily["mean"], color="#AA3377", lw=2, ls="--", label="Nitrate Flux")
+ax.fill_between(
+    days,
+    composite_nitrate_flux_daily["mean"] + composite_nitrate_flux_daily["ci"],
+    composite_nitrate_flux_daily["mean"] - composite_nitrate_flux_daily["ci"],
+    color="#AA3377",
+    alpha=0.5,
+)
+ax.plot(
+    days,
+    composite_inner_nitrate_daily["mean"],
+    color="#228833",
+    lw=2,
+    ls="-.",
+    label="Inner-shelf $\\partial N / \\partial t$",
+)
+ax.fill_between(
+    days,
+    composite_inner_nitrate_daily["mean"] + composite_inner_nitrate_daily["ci"],
+    composite_inner_nitrate_daily["mean"] - composite_inner_nitrate_daily["ci"],
+    color="#228833",
+    alpha=0.5,
+)
+ax.plot(
+    days,
+    composite_mid_nitrate_daily["mean"],
+    color="#4477AA",
+    lw=2,
+    ls=":",
+    label="Mid-shelf $\\partial N / \\partial t$",
+)
+ax.fill_between(
+    days,
+    composite_mid_nitrate_daily["mean"] + composite_mid_nitrate_daily["ci"],
+    composite_mid_nitrate_daily["mean"] - composite_mid_nitrate_daily["ci"],
+    color="#4477AA",
+    alpha=0.5,
+)
+
+ax.set_xlabel("Days Since Wind Stress Event")
+ax.set_ylabel("[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]")
+
+ax.legend(facecolor="white", frameon=True, framealpha=1, ncols=2, loc="lower left")
+
+ax.set_ylim(-18, 18)
+
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_residual_daily.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+    dpi=600,
+)
+
+# %%
+fig, ax = plt.subplots()
+
+ax.fill_between(
+    days,
+    composite_residual["mean"] + composite_residual["ci"],
+    composite_residual["mean"] - composite_residual["ci"],
+    color="gray",
+    alpha=0.5,
+    label="95% CI",
+)
+
+ax.axhline(0, color="k", ls="--", lw=1)
+
+ax.plot(days, composite_residual["mean"], color="k", lw=2, label="Mean Residual")
+
+ax.set_xlabel("Days Since Wind Stress Event")
+ax.set_ylabel("Residual $\\epsilon$ [$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]")
+
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_residual.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+    dpi=600,
+)
+
+# %%
+fig, ax = plt.subplots()
+
+ax.fill_between(
+    days,
+    composite_chlorophyll["mean"] + composite_chlorophyll["ci"],
+    composite_chlorophyll["mean"] - composite_chlorophyll["ci"],
+    color="gray",
+    alpha=0.5,
+)
+
+ax.axhline(0, color="k", ls="--", lw=1)
+
+ax.plot(days, composite_chlorophyll["mean"], color="k", lw=2, marker="o")
+
+ax.set_xlabel("Days Since Wind Stress Event")
+ax.set_ylabel("7 m Chlorophyll-a [$\\mathsf{mg \\; m^{-3}}$]")
+
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_chlorophyll.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+    dpi=600,
+)
+
+# %% [markdown]
+#

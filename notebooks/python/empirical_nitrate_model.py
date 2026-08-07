@@ -45,6 +45,8 @@ MIDSHELF_NITRATE_PATH = (
 )
 WIND_PATH = DATA_DIR / "NDBC_46050/46050_wind_binned_with_w5d_w8d.nc"
 GEBCO_PATH = list(Path(DATA_DIR / "GEBCO/").glob("*.nc"))
+CHL_PATH = DATA_DIR / "CE01ISSM/CE01ISSM_chlorophyll_2014-04-17_2025-09-22.nc"
+
 
 # %%
 inner_nitrate = xr.open_dataset(INNER_NITRATE_PATH)
@@ -64,6 +66,10 @@ nhl_grid["meters"] = -haversine(
     nhl_grid["latitude"],
 )
 nhl_grid["time"] = nhl_grid["time"].dt.floor("D")
+
+estimated_chloro = xr.open_dataset(CHL_PATH)["chlorophyll_a"]
+estimated_chloro = estimated_chloro.sortby("time").resample(time="1D").mean()
+estimated_chloro = estimated_chloro.where(estimated_chloro["time"].dt.month.isin([4, 5, 6, 7, 8, 9]), drop=True)
 
 # %% [markdown]
 # ## 2 Layer Model Computation
@@ -657,6 +663,132 @@ plt.savefig(
 )
 
 ols_fit.summary()
+
+# %% [markdown]
+# Combined nitrate wind and chlorophyll nitrate wind figure
+
+# %%
+chl_al_wind, wind_al_chl = xr.align(
+    estimated_chloro,
+    wind["w5d"],
+)
+
+slope = 1 / fit[0]
+intercept = -fit[1] / fit[0]
+
+fig, axs = plt.subplots(1, 2, figsize=(8, 4))
+fig.subplots_adjust(wspace=0.3)
+
+axs[0].axvline(0, ls="--", color="black")
+axs[0].axhline(0, ls="-", color="black")
+axs[0].plot(
+    wind_al_nitrate[wind_use],
+    nitrate_al_wind["nitrate"].mean(dim="depth", skipna=True),
+    ".",
+    color="#004488",
+)
+axs[0].set_xlim(-0.15, 0.1)
+axs[0].set_ylim(-2, 40)
+axs[0].set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{N \\; m^{-2}}$]")
+axs[0].set_ylabel("Depth mean nitrate conc. $[\\mathsf{mmol \\; m^{-3}}]$")
+axs[0].plot(slope * mod_zf + intercept, mod_nda, color="#BB5566", linewidth=2)
+axs[0].text(
+    0.03,
+    0.06,
+    "Upwelling\nFavorable\n$\\longleftarrow$",
+    transform=axs[0].transAxes,
+    fontsize=10,
+)
+axs[0].text(
+    0.97,
+    0.06,
+    "Downwelling\nFavorable\n$\\longrightarrow$",
+    transform=axs[0].transAxes,
+    fontsize=10,
+    ha="right",
+)
+ax1 = axs[1].twinx()
+axs[1].axhline(0, ls="-", color="black")
+axs[1].axvline(0, ls="--", color="black")
+axs[1].plot(
+    wind_al_nitrate[wind_use],
+    nitrate_al_wind["nitrate"].mean(dim="depth", skipna=True),
+    ".",
+    color="#004488",
+)
+ax1.plot(
+    wind_al_chl,
+    chl_al_wind,
+    ".",
+    color="#BB5566",
+)
+axs[1].set_xlim(-0.15, 0.1)
+axs[1].set_ylim(-2, 40)
+axs[1].set_xlabel("$\\mathsf{W_{5d}}$ [$\\mathsf{N \\; m^{-2}}$]")
+axs[1].set_ylabel("Depth-mean nitrate conc. [$\\mathsf{mmol \\; m^{-3}}$]")
+ax1.set_ylabel(
+    "7-meter chlorophyll conc. [$\\mathsf{mg \\; m^{-3}}$]",
+    rotation=270,
+    labelpad=20,
+)
+
+axs[1].tick_params(axis="y", colors="#004488")
+ax1.tick_params(axis="y", colors="#BB5566")
+axs[1].yaxis.label.set_color("#004488")
+ax1.yaxis.label.set_color("#BB5566")
+axs[1].annotate(
+    "Nutrient\nLimited",
+    xy=(0.97, 0.2),
+    xycoords="axes fraction",
+    ha="right",
+    fontsize=10,
+    color="black",
+    zorder=10,
+)
+axs[1].annotate(
+    "Advection\nLimited",
+    xy=(0.03, 0.2),
+    xycoords="axes fraction",
+    ha="left",
+    color="black",
+    fontsize=10,
+    zorder=10,
+)
+
+axs[0].annotate(
+    "(a)",
+    xy=(0.03, 0.97),
+    xycoords="axes fraction",
+    fontsize=10,
+    va="top",
+)
+axs[1].annotate(
+    "(b)",
+    xy=(0.03, 0.97),
+    xycoords="axes fraction",
+    fontsize=10,
+    va="top",
+)
+
+# align zeroes on y axes
+ax1_ylims = axs[1].axes.get_ylim()
+ax1_yratio = ax1_ylims[0] / ax1_ylims[1]
+
+ax2_ylims = ax1.axes.get_ylim()
+ax2_yratio = ax2_ylims[0] / ax2_ylims[1]
+
+if ax1_yratio < ax2_yratio:
+    ax1.set_ylim(bottom=ax2_ylims[1] * ax1_yratio)
+else:
+    ax1.set_ylim(bottom=ax1_ylims[1] * ax2_yratio)
+
+plt.savefig(
+    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/nitrate_wind_chl.{FIG_SAVE_FMT}",
+    format=FIG_SAVE_FMT,
+    bbox_inches="tight",
+    dpi=600,
+)
+
 
 # %%
 tdelay = np.arange(1, 21)

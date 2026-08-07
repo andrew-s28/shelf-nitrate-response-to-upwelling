@@ -44,6 +44,7 @@ wind = xr.open_dataset(WIND_PATH, decode_timedelta=True)
 
 estimated_chloro = xr.open_dataset(CHL_PATH)["chlorophyll_a"]
 estimated_chloro = estimated_chloro.sortby("time").resample(time="1D").mean()
+estimated_chloro = estimated_chloro.where(estimated_chloro["time"].dt.month.isin([4, 5, 6, 7, 8, 9]), drop=True)
 
 # %%
 alpha = 0.05
@@ -109,7 +110,7 @@ ax1.annotate(
     xycoords="axes fraction",
     ha="center",
     fontsize=14,
-    color="#EE7733",
+    color="black",
     zorder=10,
 )
 ax1.annotate(
@@ -117,16 +118,7 @@ ax1.annotate(
     xy=(0.17, 0.3),
     xycoords="axes fraction",
     ha="center",
-    color="#228833",
+    color="black",
     fontsize=14,
     zorder=10,
 )
-
-plt.savefig(
-    FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/chlorophyll-nitrate-wind.{FIG_SAVE_FMT}",
-    format=FIG_SAVE_FMT,
-    bbox_inches="tight",
-    dpi=600,
-)
-
-# %%
