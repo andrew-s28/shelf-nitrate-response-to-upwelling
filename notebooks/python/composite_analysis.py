@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: nitrate-upwelling (3.12.9)
+#     display_name: .venv
 #     language: python
 #     name: python3
 # ---
@@ -58,17 +58,29 @@ velocity = xr.open_dataset(VEL_PATH)
 # interpolate velocity depths to match 1 meter bins in midshelf nitrate
 velocity = velocity.interp(depth=midshelf_nitrate.depth)
 
+# %%
+velocity.where((velocity["time"].dt.month >= 7) & (velocity["time"].dt.month <= 8)).mean(dim="time")["u_proj"].plot(
+    y="depth",
+    yincrease=False,
+)
+
+# %%
+velocity.where((velocity["time"].dt.month >= 7) & (velocity["time"].dt.month <= 8)).mean(dim="time")["u_proj"].plot(
+    y="depth",
+    yincrease=False,
+)
+
 # %% [markdown]
 # ## Computing Composites Based on Wind Stress
 
 # %%
-WIND_MIN, WIND_MAX = 0, 0
+WIND_MIN, WIND_MAX = -0.0, -0.0
 days = np.arange(-5, 6)
 composite_wind_events = []
 for t1, t2 in pairwise(tqdm(wind["time"], desc="Finding Wind Stress Events")):
     wind_t1 = wind.sel({"time": t1})
     wind_t2 = wind.sel({"time": t2})
-    # find times when wind switches from above -0.03 to below -0.05
+    # find times when wind switches from above WIND_MAX to below WIND_MIN
     if (wind_t2.coare_y < WIND_MIN) & (wind_t1.coare_y > WIND_MAX):
         wind_slice = wind.sel(time=slice(t2, t2 + np.timedelta64(5, "D")))
         # only include events that have upwelling favorable winds for at least 5 days after initial change
@@ -97,31 +109,34 @@ composite_midshelf_nitrate_events = [
 composite_midshelf_nitrate_events = [cmn for cmn in composite_midshelf_nitrate_events if cmn["time"].size == len(days)]
 
 # deal with overlapping events
-# if the time between events is less than 5 days, combine them
+# if the time between events is less than 5 days, drop the second event
 composite_times = [c["time"][5].values for c in composite_wind_events]
+composite_wind_events_filtered = composite_wind_events[:1]  # start with the first event
 for i, (t1, t2) in enumerate(
     pairwise(composite_times),
 ):
-    if t2 - t1 < np.timedelta64(5, "D"):
-        composite_wind_events[i] = composite_wind_events[i].sel(
-            time=slice(None, t2 - np.timedelta64(1, "D")),
-        )
+    # if the time between events is less than 5 days, drop the second event
+    if t2 - t1 > np.timedelta64(5, "D"):
+        composite_wind_events_filtered.append(composite_wind_events[i + 1])
+composite_wind_events = composite_wind_events_filtered
+
 composite_times = [c["time"][5].values for c in composite_vel_events]
+composite_vel_events_filtered = composite_vel_events[:1]  # start with the first event
 for i, (t1, t2) in enumerate(
     pairwise(composite_times),
 ):
-    if t2 - t1 < np.timedelta64(5, "D"):
-        composite_vel_events[i] = composite_vel_events[i].sel(
-            time=slice(None, t2 - np.timedelta64(1, "D")),
-        )
+    # if the time between events is less than 5 days, drop the second event
+    if t2 - t1 > np.timedelta64(5, "D"):
+        composite_vel_events_filtered.append(composite_vel_events[i + 1])
+composite_vel_events = composite_vel_events_filtered
+
 composite_times = [c["time"][5].values for c in composite_midshelf_nitrate_events]
+composite_midshelf_nitrate_events_filtered = composite_midshelf_nitrate_events[:1]  # start with the first event
 for i, (t1, t2) in enumerate(
     pairwise(composite_times),
 ):
-    if t2 - t1 < np.timedelta64(5, "D"):
-        composite_midshelf_nitrate_events[i] = composite_midshelf_nitrate_events[i].sel(
-            time=slice(None, t2 - np.timedelta64(1, "D")),
-        )
+    if t2 - t1 > np.timedelta64(5, "D"):
+        composite_midshelf_nitrate_events_filtered.append(composite_midshelf_nitrate_events[i + 1])
 
 # %%
 # different because the velocity data does not span as far back as wind data
@@ -429,27 +444,19 @@ composite_vel_monthly_as_slice = composite_vel_monthly_as.sel(
 for i, v in enumerate(composite_vel_monthly_as_slice["time"]):
     for j, m in enumerate(composite_vel_monthly_as_slice.sel(time=v)["month"]):
         data = composite_vel_monthly_as_slice.sel(time=v, month=m)
-        if j == 0:
-            axs[i].plot(
-                data["mean"],
-                -data["depth"],
-                label=calendar.month_abbr[m.values],
-                c=colors[j],
-                ls="--",
-            )
-        else:
-            axs[i].plot(
-                data["mean"],
-                -data["depth"],
-                label=calendar.month_abbr[m.values],
-                c=colors[j],
-            )
+        axs[i].plot(
+            data["mean"],
+            -data["depth"],
+            label=calendar.month_abbr[m.values],
+            c=colors[j],
+            linestyle=linestyles[j],
+        )
         axs[i].minorticks_off()
         axs[i].set_ylim([-80, 0])
 
-axs[0].annotate("-5 days\n(a)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
+axs[0].annotate("-2 days\n(a)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
 axs[1].annotate("0 days\n(b)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
-axs[2].annotate("+5 days\n(c)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
+axs[2].annotate("+2 days\n(c)", xy=(0.10, 0.05), xycoords="axes fraction", fontsize=10)
 
 handles, labels = axs[0].get_legend_handles_labels()
 fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.9, 0.5))
@@ -461,6 +468,24 @@ plt.savefig(
     format=FIG_SAVE_FMT,
     bbox_inches="tight",
 )
+
+# %%
+composite_vel_monthly_as_slice
+
+# %%
+for m in composite_vel_monthly_as["month"].sel(month=slice(4, 9)):
+    data = composite_vel_monthly_as.sel(month=m).mean(dim="depth")
+    plt.plot(
+        data["time"],
+        data["mean"],
+        label=calendar.month_abbr[m.values],
+        c=colors[m.values - 4],
+        ls=linestyles[m.values - 4],
+    )
+plt.xticks(np.arange(-4, 5, 2))
+plt.ylabel("Depth mean along-shelf velocity [$\\mathsf{m \\; s^{-1}}$]")
+plt.xlabel("Days from beginning of upwelling event")
+plt.legend(ncol=2, loc="upper right", framealpha=1)
 
 # %%
 MINIMUM_N_STAR = 5

@@ -178,6 +178,7 @@ pyrightconfig.json
 # ignore figures and presentation
 figures/*
 presentation/*.pptx
+writing/*
 
 # ignore select data files, all of which are reproducible via included scripts
 data/NH10_ADCP_Data/*

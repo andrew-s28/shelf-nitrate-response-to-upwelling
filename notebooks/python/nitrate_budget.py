@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: nitrate-upwelling (3.12.9)
+#     display_name: .venv
 #     language: python
 #     name: python3
 # ---
@@ -119,7 +119,7 @@ def haversine(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
 
     """
     # convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])  # ty: ignore[invalid-assignment]
     # haversine formula
     dlon = lon2 - lon1
     dlat = lat2 - lat1
@@ -146,6 +146,45 @@ midshelf_nitrate_monthly = xr.Dataset(
     },
 )
 midshelf_nitrate_monthly["ci"] = midshelf_nitrate_monthly["std"] / np.sqrt(5) * distributions.t(5 - 1).isf(0.025)
+
+# %% [markdown]
+# ## Get upwelling event start times
+
+# %%
+WIND_MIN, WIND_MAX = -0.0, -0.0
+days = np.arange(-5, 6)
+composite_wind_events = []
+for t1, t2 in pairwise(tqdm(wind["time"], desc="Finding Wind Stress Events")):
+    wind_t1 = wind.sel({"time": t1})
+    wind_t2 = wind.sel({"time": t2})
+    # find times when wind switches from above WIND_MAX to below WIND_MIN
+    if (wind_t2.coare_y < WIND_MIN) & (wind_t1.coare_y > WIND_MAX):
+        wind_slice = wind.sel(time=slice(t2, t2 + np.timedelta64(5, "D")))
+        # only include events that have upwelling favorable winds for at least 5 days after initial change
+        if np.all(wind_slice.coare_y < 0):
+            composite_wind_events.append(
+                wind.sel(
+                    time=slice(t2 - np.timedelta64(5, "D"), t2 + np.timedelta64(5, "D")),
+                ),
+            )
+            # drop unnecessary variables
+            composite_wind_events[-1] = composite_wind_events[-1].drop_vars(
+                ["dominant_wpd", "average_wpd"],
+            )
+
+
+# %%
+# get event start times and deal with overlapping events
+composite_times = np.array([c["time"][5].values for c in composite_wind_events])
+composite_wind_events_filtered = composite_wind_events[:1]  # start with the first event
+for i, (t1, t2) in enumerate(
+    pairwise(composite_times),
+):
+    # if the time between subsequent events is more than 5 days, include the second event, otherwise drop it
+    if t2 - t1 > np.timedelta64(5, "D"):
+        composite_wind_events_filtered.append(composite_wind_events[i + 1])
+composite_wind_events = composite_wind_events_filtered
+composite_times = np.array([c["time"][5].values for c in composite_wind_events])
 
 # %% [markdown]
 # ## "Normal" Cross-shelf Advective Flux Divergence Calculation
@@ -275,6 +314,14 @@ plot_correlations(
 correlation.min()
 
 # %%
+from scipy.stats import linregress
+
+# %%
+a, b = xr.align(inner_nitrate.mean(dim="depth")["nitrate"], wind["coare_y"])
+mask = ~np.isnan(a) & ~np.isnan(b)
+linregress(b[mask], a[mask])
+
+# %%
 tdelay = np.arange(-20, 20)
 correlation, confint, n = lagged_correlation(
     inner_nitrate.mean(dim="depth")["nitrate"],
@@ -292,6 +339,11 @@ plot_correlations(
 )
 
 correlation.min()
+
+# %%
+a, b = xr.align(midshelf_nitrate.mean(dim="depth")["nitrate"], wind["coare_y"])
+mask = ~np.isnan(a) & ~np.isnan(b)
+linregress(b[mask], a[mask])
 
 # %%
 tdelay = np.arange(-50, 50)
@@ -537,6 +589,12 @@ axs[2].annotate("(c)", xy=(0.95, 0.05), xycoords="axes fraction", fontsize=10)
 axs[3].annotate("(d)", xy=(0.95, 0.05), xycoords="axes fraction", fontsize=10)
 axs[3].tick_params(axis="x", which="major", labelsize=10)
 
+# get only 2021 upwelling events
+mask = (composite_times > np.datetime64("2021-04-01")) & (composite_times < np.datetime64("2021-10-01"))
+composite_times_2021 = composite_times[mask]
+for ax in axs:
+    [ax.axvline(event_start, color="gray", ls="--", lw=1) for event_start in composite_times_2021]
+
 plt.savefig(
     FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/2021_nbudget.{FIG_SAVE_FMT}",
     format=FIG_SAVE_FMT,
@@ -546,28 +604,6 @@ plt.savefig(
 
 # %% [markdown]
 # Composite budget terms based on upwelling favorable wind stress events
-
-# %%
-WIND_MIN, WIND_MAX = 0, 0
-days = np.arange(-5, 6)
-composite_wind_events = []
-for t1, t2 in pairwise(tqdm(wind["time"], desc="Finding Wind Stress Events")):
-    wind_t1 = wind.sel({"time": t1})
-    wind_t2 = wind.sel({"time": t2})
-    # find times when wind switches from above -0.03 to below -0.05
-    if (wind_t2.coare_y < WIND_MIN) & (wind_t1.coare_y > WIND_MAX):
-        wind_slice = wind.sel(time=slice(t2, t2 + np.timedelta64(5, "D")))
-        # only include events that have upwelling favorable winds for at least 5 days after initial change
-        if np.all(wind_slice.coare_y < 0):
-            composite_wind_events.append(
-                wind.sel(
-                    time=slice(t2 - np.timedelta64(5, "D"), t2 + np.timedelta64(5, "D")),
-                ),
-            )
-            # drop unnecessary variables
-            composite_wind_events[-1] = composite_wind_events[-1].drop_vars(
-                ["dominant_wpd", "average_wpd"],
-            )
 
 # %%
 flux_al_nitr, inner_al_flux, mid_al_flux = xr.align(
@@ -726,21 +762,23 @@ fig, ax = plt.subplots(figsize=(8, 4))
 
 ax.axhline(0, color="k", ls="--", lw=1)
 
-ax.plot(days, composite_residual_daily["mean"], color="k", lw=2, label="Residual")
+ax.plot(days, composite_residual_daily["mean"], color="k", lw=2, label="Residual", zorder=100)
 ax.fill_between(
     days,
     composite_residual_daily["mean"] + composite_residual_daily["ci"],
     composite_residual_daily["mean"] - composite_residual_daily["ci"],
     color="gray",
-    alpha=0.5,
+    alpha=0.25,
+    zorder=10,
 )
-ax.plot(days, composite_nitrate_flux_daily["mean"], color="#AA3377", lw=2, ls="--", label="Nitrate Flux")
+ax.plot(days, composite_nitrate_flux_daily["mean"], color="#AA3377", lw=2, ls="--", label="Nitrate Flux", zorder=100)
 ax.fill_between(
     days,
     composite_nitrate_flux_daily["mean"] + composite_nitrate_flux_daily["ci"],
     composite_nitrate_flux_daily["mean"] - composite_nitrate_flux_daily["ci"],
     color="#AA3377",
-    alpha=0.5,
+    alpha=0.25,
+    zorder=10,
 )
 ax.plot(
     days,
@@ -749,13 +787,15 @@ ax.plot(
     lw=2,
     ls="-.",
     label="Inner-shelf $\\partial N / \\partial t$",
+    zorder=100,
 )
 ax.fill_between(
     days,
     composite_inner_nitrate_daily["mean"] + composite_inner_nitrate_daily["ci"],
     composite_inner_nitrate_daily["mean"] - composite_inner_nitrate_daily["ci"],
     color="#228833",
-    alpha=0.5,
+    alpha=0.25,
+    zorder=10,
 )
 ax.plot(
     days,
@@ -764,13 +804,15 @@ ax.plot(
     lw=2,
     ls=":",
     label="Mid-shelf $\\partial N / \\partial t$",
+    zorder=100,
 )
 ax.fill_between(
     days,
     composite_mid_nitrate_daily["mean"] + composite_mid_nitrate_daily["ci"],
     composite_mid_nitrate_daily["mean"] - composite_mid_nitrate_daily["ci"],
     color="#4477AA",
-    alpha=0.5,
+    alpha=0.25,
+    zorder=10,
 )
 
 ax.set_xlabel("Days Since Wind Stress Event")
@@ -778,7 +820,8 @@ ax.set_ylabel("[$\\mathsf{mmol \\; m^{-1} \\; s^{-1}}$]")
 
 ax.legend(facecolor="white", frameon=True, framealpha=1, ncols=2, loc="lower left")
 
-ax.set_ylim(-18, 18)
+ax.set_ylim(-20, 20)
+ax.set_xticks(np.arange(-5, 6, 1))
 
 plt.savefig(
     FIGURES_DIR / f"manuscript/{FIG_SAVE_FMT}/composite_residual_daily.{FIG_SAVE_FMT}",
@@ -786,6 +829,8 @@ plt.savefig(
     bbox_inches="tight",
     dpi=600,
 )
+
+# %%
 
 # %%
 fig, ax = plt.subplots()

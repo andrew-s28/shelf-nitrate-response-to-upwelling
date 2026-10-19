@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: nitrate-upwelling (3.12.9)
+#     display_name: .venv
 #     language: python
 #     name: python3
 # ---
@@ -346,7 +346,7 @@ fig, axs = plt.subplots(1, 1, figsize=(5, 4), sharex=True)
 axs.plot(
     inner_depth_mean_monthly["month"],
     inner_depth_mean_monthly["nitrate"],
-    color="#BB5566",
+    color="#004488",
     label="Inner-shelf",
 )
 
@@ -355,13 +355,13 @@ axs.fill_between(
     inner_depth_mean_monthly["nitrate"] - inner_depth_mean_monthly["nitrate_ci"],
     inner_depth_mean_monthly["nitrate"] + inner_depth_mean_monthly["nitrate_ci"],
     alpha=0.5,
-    color="#BB5566",
+    color="#004488",
 )
 
 axs.plot(
     midshelf_depth_mean_monthly["month"],
     midshelf_depth_mean_monthly["nitrate"],
-    color="#004488",
+    color="#BB5566",
     label="Mid-shelf",
 )
 
@@ -370,7 +370,7 @@ axs.fill_between(
     midshelf_depth_mean_monthly["nitrate"] - midshelf_depth_mean_monthly["nitrate_ci"],
     midshelf_depth_mean_monthly["nitrate"] + midshelf_depth_mean_monthly["nitrate_ci"],
     alpha=0.5,
-    color="#004488",
+    color="#BB5566",
 )
 
 axs.set_xlim(4, 10)
